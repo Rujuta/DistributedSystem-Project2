@@ -2,13 +2,21 @@
 #include "recv_dbg.h"
 
 
-void multicast(packet*,int , struct sockaddr_in *);
+void multicast(packet*, my_variables *);
 int get_local_ipaddress();
+void unicast(packet*, my_variables* ,int);
+packet* create_packet(packet_type , payload_def *, int  , int);
+int process_ip(packet *, int *, my_variables*);
+
+void debug_log(char *,int );
+
 int main(int argc, char* argv[])
 {
+
+	int debug=1;
 	/*Pre-Initialization starts here*/
 	struct sockaddr_in name;
-	struct sockaddr_in send_addr;
+	struct sockaddr_in multicast_addr,unicast_addr;
 
 	int                mcast_addr;
 
@@ -72,9 +80,17 @@ int main(int argc, char* argv[])
 		printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in WinNT or Win95\n", ttl_val );
 	}
 
-	send_addr.sin_family = AF_INET;
-	send_addr.sin_addr.s_addr = htonl(mcast_addr);  /* mcast address */
-	send_addr.sin_port = htons(PORT);
+	/*Used for multicast*/
+	multicast_addr.sin_family = AF_INET;
+	multicast_addr.sin_addr.s_addr = htonl(mcast_addr);  /* mcast address */
+	multicast_addr.sin_port = htons(PORT);
+
+	/*Used for unicast*/
+	unicast_addr.sin_family = AF_INET;
+	unicast_addr.sin_addr.s_addr = htonl(mcast_addr);  /* mcast address */
+	unicast_addr.sin_port = htons(PORT);
+
+
 
 	FD_ZERO( &mask );
 	FD_ZERO( &dummy_mask );
@@ -106,13 +122,50 @@ int main(int argc, char* argv[])
 	/*Got start mcast, now main protocol will start*/
 
 	/*Defining data structures*/
-	long my_ip = get_local_ipaddress();
-	printf("\nMy IP is: %d",my_ip);
+	int token_id=-1;
+	state my_state=INIT;
+	struct timeval timeout;
+
+	int green_flag=0,i;
+	//int recv_machine_id;
+	//int recv_token_id;
+	//int recv_type;
+	//payload_def recv_payload;
+
+	/*Initializing local structure*/
+	my_variables local_var;
+	local_var.machine_id=atoi(argv[2]);
+	local_var.no_of_machines=atoi(argv[3]);
+	local_var.my_ip=get_local_ipaddress();
+	local_var.ss=ss;
+	local_var.multicast_addr=&multicast_addr;
+	local_var.unicast_addr=&unicast_addr;
+
+	int ip_table[local_var.no_of_machines]; // this is number of machines
+	int green_table[local_var.no_of_machines];
+	for(i=0;i<local_var.no_of_machines;i++){
+		ip_table[i]=0;
+		green_table[i]=0;
+	}	
+	ip_table[local_var.machine_id]=local_var.my_ip;
+	
 	recv_dbg_init(atoi(argv[4]),atoi(argv[2]));
+
+
+	/*Creating payload for init packet*/
+	payload_def init_payload;
+	init_payload.ip_address= local_var.my_ip;
+	packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
+	timeout.tv_usec=INIT_TIMEOUT;
+	/*send init_msg with IP*/
+	multicast(init_packet,&local_var);
+	if(debug){
+		printf("\nINIT sent");
+	}
 	for(;;)
 	{
 		temp_mask = mask;
-		num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, NULL);
+		num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
 		if (num > 0) {
 			if ( FD_ISSET( sr, &temp_mask) ) {
 				//bytes = recv( sr, mess_buf, sizeof(mess_buf), 0 );
@@ -120,8 +173,50 @@ int main(int argc, char* argv[])
 				mess_buf=NULL;
 				mess_buf=(packet*)malloc(sizeof(packet));
 				bytes=recv_dbg(sr,(char*)mess_buf,sizeof(packet),0);
-				printf( "received from: %d\n", mess_buf->machine_id );
-			}else if( FD_ISSET(0, &temp_mask) ) {
+				if(debug){
+					printf("\nReceived something");
+				}
+				if(mess_buf->machine_id==local_var.machine_id)
+					continue;
+
+				if(debug){
+					printf("\nReceived from someone else");
+				}
+
+				switch(my_state){
+
+					
+	 	
+					case INIT:
+						if(debug){
+							printf("\nInside INIT");
+						}
+						switch(mess_buf->type){
+
+							case INIT_MSG:  if(!green_flag){
+										debug_log("Inside green flag check",debug);
+										green_flag=process_ip(mess_buf,ip_table,&local_var);
+									}
+								       break;
+							case INIT_REQ_IP:
+								      break;
+							case INIT_GREEN:
+								      break;
+
+
+						}
+
+						break;
+					case HAS_TOKEN:
+						break;
+					case HAD_TOKEN:
+						break;
+					case NO_TOKEN:
+						break;
+
+
+				}
+			}/*else if( FD_ISSET(0, &temp_mask) ) {
 				bytes = read( 0, input_buf, sizeof(input_buf) );
 				input_buf[bytes] = 0;
 				printf( "there is an input: %s\n", input_buf );
@@ -130,22 +225,68 @@ int main(int argc, char* argv[])
 				init_packet->machine_id=atoi(argv[2]);
 				init_packet->token_id=2;
 				init_packet->type=INIT_MSG;
-				multicast(init_packet, ss, &send_addr);
-			}
+				multicast(init_packet, ss, &multicast_addr);
+				printf("\nNow just going to do a simple unicast\n");
+				unicast(init_packet,ss,&unicast_addr,1440799872);
+
+
+			}*/
 		}
 	}
-
 	return 0;
 
 }
 
-void multicast(packet* send_buff,int ss, struct sockaddr_in *send_addr){
+void multicast(packet* send_buff, my_variables *local_var){
 
 
-	sendto(ss, (char*)send_buff, sizeof(packet), 0,
-			(struct sockaddr *)send_addr, sizeof(*send_addr));
+	sendto(local_var->ss, (char*)send_buff, sizeof(packet), 0,
+			(struct sockaddr *)local_var->multicast_addr, sizeof(*(local_var->multicast_addr)));
 
 
 }
 
+void unicast(packet *send_buff, my_variables *local_var, int ip_address){
 
+
+	(*(local_var->unicast_addr)).sin_addr.s_addr=ip_address;
+	sendto(local_var->ss, (char*)send_buff, sizeof(packet), 0,
+			(struct sockaddr *)local_var->unicast_addr, sizeof(*(local_var->unicast_addr)));
+
+}
+
+packet* create_packet(packet_type new_type, payload_def *content, int machine_id , int token_id){
+
+	packet *new_packet=(packet*)malloc(sizeof(packet));
+	//new_packet->payload=content;
+	memcpy(&(new_packet->payload),content,sizeof(payload_def)); 
+	new_packet->machine_id=machine_id;
+	new_packet->token_id=token_id;
+	new_packet->type=new_type;
+	return new_packet;
+
+}
+
+int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
+
+	int i,machine_id=mess_buf->machine_id;
+	ip_table[machine_id]=mess_buf->payload.ip_address;
+	/*Check for green*/
+	for(i=0;i<local_var->no_of_machines;i++){
+	
+		if(ip_table[i]==0)
+			return 0;
+	}
+	payload_def content;
+	content.ip_address=-1;
+	//packet* new_packet=create_packet(INIT_GREEN,&content);
+	return 1;
+
+}
+
+void debug_log(char *statement,int debug){
+
+	if(debug){
+		printf("\n %s\n",statement);
+	}
+}

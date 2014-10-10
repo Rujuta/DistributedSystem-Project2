@@ -26,7 +26,8 @@
 #define INIT_TIMEOUT 100
 #define START_MSG_SIZE 80
 
-typedef enum {INIT_MSG=0,INIT_REQ_IP, TOKEN, DATA, QUIT } packet_type;
+typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
+typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;
 
 typedef struct  token_def{
 
@@ -47,7 +48,7 @@ typedef struct data_def{
 typedef union payload_def{
 
 	token_def token ;
-	long ip_address; 
+	int ip_address; 
 	data_def data;
 
 }payload_def;
@@ -60,4 +61,12 @@ typedef struct packet{
 	int token_id; //corresponding to which token version this packet was sent
 }packet;
 
+typedef struct my_variables{
 
+	int ss;
+	struct sockaddr_in *multicast_addr;
+	struct sockaddr_in *unicast_addr;
+	int machine_id;
+	int no_of_machines;
+	int my_ip;
+}my_variables;
