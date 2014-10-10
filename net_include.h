@@ -17,12 +17,14 @@
 
 #define MAX_MESS_LEN 1400
 
+
 /*Added definitions*/
 #define MCAST_ADDRESS 225 << 24 | 1 << 16 | 2 << 8 | 115
 #define WINDOW 1000
 #define DATA_SIZE 1200
 #define HAD_TOKEN_TIMEOUT 100
 #define INIT_TIMEOUT 100
+#define START_MSG_SIZE 80
 
 typedef enum {INIT_MSG=0,INIT_REQ_IP, TOKEN, DATA, QUIT } packet_type;
 
