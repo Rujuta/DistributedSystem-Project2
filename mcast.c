@@ -3,6 +3,7 @@
 
 
 void multicast(packet*,int , struct sockaddr_in *);
+int get_local_ipaddress();
 int main(int argc, char* argv[])
 {
 	/*Pre-Initialization starts here*/
@@ -104,8 +105,10 @@ int main(int argc, char* argv[])
 
 	/*Got start mcast, now main protocol will start*/
 
-	/*Defining data */
-	recv_dbg_init(atoi(argv[4],atoi(argv[2])));
+	/*Defining data structures*/
+	long my_ip = get_local_ipaddress();
+	printf("\nMy IP is: %d",my_ip);
+	recv_dbg_init(atoi(argv[4]),atoi(argv[2]));
 	for(;;)
 	{
 		temp_mask = mask;
@@ -144,4 +147,5 @@ void multicast(packet* send_buff,int ss, struct sockaddr_in *send_addr){
 
 
 }
+
 
