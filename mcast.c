@@ -13,6 +13,14 @@ void process_green(int *, my_variables *, int );
 
 void send_green(my_variables* ,int *);
 
+void handle_retransmission(my_variables *local_var);
+
+int recvd_by_all(my_variables *local_var);
+
+void write_to_file(my_variables *local_var);
+
+void process_token(my_variables *local_var);
+
 int main(int argc, char* argv[])
 {
 
@@ -137,8 +145,19 @@ int main(int argc, char* argv[])
 
 	/*Initializing local structure*/
 	my_variables local_var;
-	local_var.machine_id=atoi(argv[2]);
+
+	/*This is my buffer of data packets*/
+	packet* buffer[WINDOW]={NULL};
+
+	/*Intializing file*/
+	char file_name[80]={'\0'};
+	strcat(file_name,argv[2]);
+	strcat(file_name,".out");
+	FILE *write = fopen(file_name,"w");
+
+	/*Assigning local variables*/
 	local_var.no_of_machines=atoi(argv[3]);
+	local_var.machine_id=atoi(argv[2]);
 	local_var.my_ip=get_local_ipaddress();
 	local_var.ss=ss;
 	local_var.multicast_addr=&multicast_addr;
@@ -147,6 +166,9 @@ int main(int argc, char* argv[])
 	local_var.tok=NULL;
 	local_var.prev_tok=NULL;
 	local_var.my_timeout=&timeout;
+	local_var.buffer=buffer;
+	local_var.local_aru=-1;
+	local_var.my_file=write;
 
 	int ip_table[local_var.no_of_machines]; // this is number of machines
 	int green_table[local_var.no_of_machines];
@@ -356,5 +378,61 @@ void debug_log(char *statement){
 	//int debug = 1;
 	if(debug){
 		printf("\n %s\n",statement);
+	}
+}
+void process_token(my_variables *local_var){
+	handle_retransmission(local_var);
+	write_to_file(local_var);
+}
+
+void write_to_file(my_variables *local_var){
+	int seq_recvd=recvd_by_all(local_var);
+	int i;
+	for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
+		int index=i%WINDOW;
+		packet *my_packet=local_var->buffer[index];
+		fprintf(local_var->my_file,"%2d, %8d, %8d\n",my_packet->machine_id, my_packet->payload.data.sequence_num,my_packet->payload.data.random_num);
+	}
+
+}
+
+/*This is received by all*/
+int recvd_by_all(my_variables *local_var){
+
+	int min=local_var->tok->aru;;
+	if(local_var->prev_tok->aru < min)
+		min=local_var->prev_tok->aru;
+
+	return min;
+}
+
+void handle_retransmission(my_variables *local_var){
+	int my_rtr[RTR_SIZE];
+	int i,k=0;
+
+	for(i=0;local_var->tok->retransmission_list[i]!=-1;i++){
+		int index= (local_var->tok->retransmission_list[i])%WINDOW;
+		if(local_var->buffer[index]!=NULL){
+			multicast(local_var->buffer[index],local_var);
+		}		
+	}
+	for(i=local_var->local_aru;i<=local_var->tok->seq;i++){
+	
+		int index= i%WINDOW;
+		if(local_var->buffer[index]==NULL){
+		
+			my_rtr[k++]=i;
+			if(k>=RTR_SIZE){
+				break;
+			}
+		}
+	}
+	for(i=0;i<k;i++){
+	
+		local_var->tok->retransmission_list[i]=my_rtr[i];
+	}
+	for(k=i;k<RTR_SIZE;k++){
+				
+		local_var->tok->retransmission_list[i]=-1;
 	}
 }

@@ -27,7 +27,7 @@
 #define NO_TOKEN_TIMEOUT 100
 #define HAS_TOKEN_TIMEOUT 100
 #define START_MSG_SIZE 80
-#define RTR_SIZE 500
+#define RTR_SIZE 296
 
 typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
 typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;
@@ -38,13 +38,13 @@ typedef struct  token_def{
 	int aru;
 	int aru_id;
 	int token_id; //handle retransmissions
-	int retransmission_list[WINDOW] ;
+	int retransmission_list[RTR_SIZE] ;
 }token_def;
 
 typedef struct data_def{
-	unsigned int sequence_num;
-	char data[DATA_SIZE];
-	unsigned int random_num;
+	int sequence_num;
+	char data_content[DATA_SIZE];
+	int random_num;
 
 }data_def;
 
@@ -76,4 +76,8 @@ typedef struct my_variables{
 	token_def *tok;
 	token_def *prev_tok;
 	struct timeval *my_timeout;
+	packet** buffer;
+	int local_aru;
+	int prev_write_seq;
+	FILE *my_file;
 }my_variables;
