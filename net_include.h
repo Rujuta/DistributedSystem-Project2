@@ -23,7 +23,9 @@
 #define WINDOW 1000
 #define DATA_SIZE 1200
 #define HAD_TOKEN_TIMEOUT 100
-#define INIT_TIMEOUT 100
+#define INIT_TIMEOUT 10000
+#define NO_TOKEN_TIMEOUT 100
+#define HAS_TOKEN_TIMEOUT 100
 #define START_MSG_SIZE 80
 #define RTR_SIZE 500
 
@@ -73,5 +75,5 @@ typedef struct my_variables{
 	state my_state;
 	token_def *tok;
 	token_def *prev_tok;
-	int my_timeout;
+	struct timeval *my_timeout;
 }my_variables;

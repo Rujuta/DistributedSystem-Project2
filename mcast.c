@@ -11,6 +11,8 @@ int process_ip(packet *, int *, my_variables*);
 void debug_log(char *);
 void process_green(int *, my_variables *, int );
 
+void send_green(my_variables* ,int *);
+
 int main(int argc, char* argv[])
 {
 
@@ -125,6 +127,7 @@ int main(int argc, char* argv[])
 	/*Defining data structures*/
 	int token_id=-1;
 	struct timeval timeout;
+	timeout.tv_sec=0;
 
 	int green_flag=0,i;
 	//int recv_machine_id;
@@ -143,6 +146,7 @@ int main(int argc, char* argv[])
 	local_var.my_state=INIT;
 	local_var.tok=NULL;
 	local_var.prev_tok=NULL;
+	local_var.my_timeout=&timeout;
 
 	int ip_table[local_var.no_of_machines]; // this is number of machines
 	int green_table[local_var.no_of_machines];
@@ -159,7 +163,7 @@ int main(int argc, char* argv[])
 	payload_def init_payload;
 	init_payload.ip_address= local_var.my_ip;
 	packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
-	timeout.tv_usec=INIT_TIMEOUT;
+	local_var.my_timeout->tv_usec=INIT_TIMEOUT;
 	/*send init_msg with IP*/
 	multicast(init_packet,&local_var);
 	if(debug){
@@ -168,7 +172,7 @@ int main(int argc, char* argv[])
 	for(;;)
 	{
 		temp_mask = mask;
-		num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
+		num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, local_var.my_timeout);
 		if (num > 0) {
 			if ( FD_ISSET( sr, &temp_mask) ) {
 				//bytes = recv( sr, mess_buf, sizeof(mess_buf), 0 );
@@ -203,9 +207,17 @@ int main(int argc, char* argv[])
 									}
 									break;
 							case INIT_REQ_IP:
+									if(mess_buf->payload.ip_address==local_var.machine_id){ //this is request for my IP
+										multicast(init_packet,&local_var);
+									}
 									break;
 							case INIT_GREEN:
 									process_green(green_table,&local_var,mess_buf->machine_id);
+									break;
+							case DATA:
+									local_var.my_state=NO_TOKEN;
+									local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
+									//process_data();
 									break;
 
 
@@ -221,21 +233,40 @@ int main(int argc, char* argv[])
 
 
 				}
-			}/*else if( FD_ISSET(0, &temp_mask) ) {
-			   bytes = read( 0, input_buf, sizeof(input_buf) );
-			   input_buf[bytes] = 0;
-			   printf( "there is an input: %s\n", input_buf );
-			   packet* init_packet = (packet*)malloc(sizeof(packet));
-			   init_packet->payload.ip_address=20;
-			   init_packet->machine_id=atoi(argv[2]);
-			   init_packet->token_id=2;
-			   init_packet->type=INIT_MSG;
-			   multicast(init_packet, ss, &multicast_addr);
-			   printf("\nNow just going to do a simple unicast\n");
-			   unicast(init_packet,ss,&unicast_addr,1440799872);
+			}
+		}
+		else{
+			switch(local_var.my_state){
+
+				case INIT:
+					if(green_flag){
+						if(local_var.machine_id==0){
+							process_green(green_table,&local_var,local_var.machine_id);							
+						}
+						else{
+
+							send_green(&local_var,ip_table);
+						}
+					}
+					else{
+
+						int i;
+						for(i=0;i<local_var.no_of_machines;i++){
+							if(ip_table[i]==0){
+								payload_def content;
+								content.ip_address = i;
 
 
-			   }*/
+								packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var.machine_id,-1);
+
+								multicast(new_packet, &local_var);
+							}
+						}
+					}
+					break;
+
+
+			}
 		}
 	}
 	return 0;
@@ -284,15 +315,20 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 	}
 	if(local_var->machine_id!=0){
 
-		payload_def content;
-		content.ip_address=-1;
-		packet* new_packet=create_packet(INIT_GREEN,&content,local_var->machine_id, -1);
-		unicast(new_packet, local_var, ip_table[0]);
+		send_green(local_var,ip_table);	
 	}
 	return 1;
 
 }
 
+void send_green(my_variables* local_var,int *ip_table){
+
+	payload_def content;
+	content.ip_address=-1;
+	packet* new_packet=create_packet(INIT_GREEN,&content,local_var->machine_id, -1);
+	unicast(new_packet, local_var, ip_table[0]);
+
+}
 void process_green(int *green_table, my_variables *local_var, int green_id){
 
 	int i;
@@ -311,9 +347,10 @@ void process_green(int *green_table, my_variables *local_var, int green_id){
 	for(i=0;i<RTR_SIZE;i++){
 		init_token->retransmission_list[i]=-1;
 	}
-	
-	local_var.my_state=HAS_TOKEN;
 
+	local_var->my_state=HAS_TOKEN;
+	(local_var->my_timeout)->tv_usec=HAS_TOKEN_TIMEOUT;
+	exit(0);
 }
 void debug_log(char *statement){
 	//int debug = 1;
