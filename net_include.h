@@ -25,6 +25,7 @@
 #define HAD_TOKEN_TIMEOUT 100
 #define INIT_TIMEOUT 100
 #define START_MSG_SIZE 80
+#define RTR_SIZE 500
 
 typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
 typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;
@@ -69,4 +70,8 @@ typedef struct my_variables{
 	int machine_id;
 	int no_of_machines;
 	int my_ip;
+	state my_state;
+	token_def *tok;
+	token_def *prev_tok;
+	int my_timeout;
 }my_variables;

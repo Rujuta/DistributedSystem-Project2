@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-
+#define debug 1
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();
@@ -8,12 +8,13 @@ void unicast(packet*, my_variables* ,int);
 packet* create_packet(packet_type , payload_def *, int  , int);
 int process_ip(packet *, int *, my_variables*);
 
-void debug_log(char *,int );
+void debug_log(char *);
+void process_green(int *, my_variables *, int );
 
 int main(int argc, char* argv[])
 {
 
-	int debug=1;
+	//int debug=1;
 	/*Pre-Initialization starts here*/
 	struct sockaddr_in name;
 	struct sockaddr_in multicast_addr,unicast_addr;
@@ -123,7 +124,6 @@ int main(int argc, char* argv[])
 
 	/*Defining data structures*/
 	int token_id=-1;
-	state my_state=INIT;
 	struct timeval timeout;
 
 	int green_flag=0,i;
@@ -140,6 +140,9 @@ int main(int argc, char* argv[])
 	local_var.ss=ss;
 	local_var.multicast_addr=&multicast_addr;
 	local_var.unicast_addr=&unicast_addr;
+	local_var.my_state=INIT;
+	local_var.tok=NULL;
+	local_var.prev_tok=NULL;
 
 	int ip_table[local_var.no_of_machines]; // this is number of machines
 	int green_table[local_var.no_of_machines];
@@ -148,7 +151,7 @@ int main(int argc, char* argv[])
 		green_table[i]=0;
 	}	
 	ip_table[local_var.machine_id]=local_var.my_ip;
-	
+
 	recv_dbg_init(atoi(argv[4]),atoi(argv[2]));
 
 
@@ -183,10 +186,10 @@ int main(int argc, char* argv[])
 					printf("\nReceived from someone else");
 				}
 
-				switch(my_state){
+				switch(local_var.my_state){
 
-					
-	 	
+
+
 					case INIT:
 						if(debug){
 							printf("\nInside INIT");
@@ -194,14 +197,16 @@ int main(int argc, char* argv[])
 						switch(mess_buf->type){
 
 							case INIT_MSG:  if(!green_flag){
-										debug_log("Inside green flag check",debug);
+										debug_log("Inside green flag check");
 										green_flag=process_ip(mess_buf,ip_table,&local_var);
+										green_table[local_var.machine_id]=green_flag;
 									}
-								       break;
+									break;
 							case INIT_REQ_IP:
-								      break;
+									break;
 							case INIT_GREEN:
-								      break;
+									process_green(green_table,&local_var,mess_buf->machine_id);
+									break;
 
 
 						}
@@ -217,20 +222,20 @@ int main(int argc, char* argv[])
 
 				}
 			}/*else if( FD_ISSET(0, &temp_mask) ) {
-				bytes = read( 0, input_buf, sizeof(input_buf) );
-				input_buf[bytes] = 0;
-				printf( "there is an input: %s\n", input_buf );
-				packet* init_packet = (packet*)malloc(sizeof(packet));
-				init_packet->payload.ip_address=20;
-				init_packet->machine_id=atoi(argv[2]);
-				init_packet->token_id=2;
-				init_packet->type=INIT_MSG;
-				multicast(init_packet, ss, &multicast_addr);
-				printf("\nNow just going to do a simple unicast\n");
-				unicast(init_packet,ss,&unicast_addr,1440799872);
+			   bytes = read( 0, input_buf, sizeof(input_buf) );
+			   input_buf[bytes] = 0;
+			   printf( "there is an input: %s\n", input_buf );
+			   packet* init_packet = (packet*)malloc(sizeof(packet));
+			   init_packet->payload.ip_address=20;
+			   init_packet->machine_id=atoi(argv[2]);
+			   init_packet->token_id=2;
+			   init_packet->type=INIT_MSG;
+			   multicast(init_packet, ss, &multicast_addr);
+			   printf("\nNow just going to do a simple unicast\n");
+			   unicast(init_packet,ss,&unicast_addr,1440799872);
 
 
-			}*/
+			   }*/
 		}
 	}
 	return 0;
@@ -273,19 +278,45 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 	ip_table[machine_id]=mess_buf->payload.ip_address;
 	/*Check for green*/
 	for(i=0;i<local_var->no_of_machines;i++){
-	
+
 		if(ip_table[i]==0)
 			return 0;
 	}
-	payload_def content;
-	content.ip_address=-1;
-	//packet* new_packet=create_packet(INIT_GREEN,&content);
+	if(local_var->machine_id!=0){
+
+		payload_def content;
+		content.ip_address=-1;
+		packet* new_packet=create_packet(INIT_GREEN,&content,local_var->machine_id, -1);
+		unicast(new_packet, local_var, ip_table[0]);
+	}
 	return 1;
 
 }
 
-void debug_log(char *statement,int debug){
+void process_green(int *green_table, my_variables *local_var, int green_id){
 
+	int i;
+	green_table[green_id]=1;
+	for(i=0;i<local_var->no_of_machines;i++){
+
+		if(green_table[i]==0)
+			return ;
+	}
+	debug_log("The world is green!!");
+	token_def *init_token=(token_def*)malloc(sizeof(token_def));
+	init_token->seq=-1;
+	init_token->aru=-1;
+	init_token->aru_id=-1;
+	init_token->token_id=0;
+	for(i=0;i<RTR_SIZE;i++){
+		init_token->retransmission_list[i]=-1;
+	}
+	
+	local_var.my_state=HAS_TOKEN;
+
+}
+void debug_log(char *statement){
+	//int debug = 1;
 	if(debug){
 		printf("\n %s\n",statement);
 	}
