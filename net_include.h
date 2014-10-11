@@ -11,6 +11,7 @@
 #include <netdb.h>
 
 #include <errno.h>
+#include <time.h>
 
 #define PORT	     10150
 
@@ -28,7 +29,8 @@
 #define HAS_TOKEN_TIMEOUT 100
 #define START_MSG_SIZE 80
 #define RTR_SIZE 296
-
+#define INDV_WINDOW 50
+#define RANDOM 1000000
 typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
 typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;
 
@@ -74,10 +76,16 @@ typedef struct my_variables{
 	int my_ip;
 	state my_state;
 	token_def *tok;
-	token_def *prev_tok;
+	int prev_token_seq;
+	int prev_token_id;
+	int prev_token_aru;
 	struct timeval *my_timeout;
 	packet** buffer;
 	int local_aru;
 	int prev_write_seq;
 	FILE *my_file;
+	int packets_sent;
+	int total_packets;
+	int eof_flag;
+	int current_packets_sent;
 }my_variables;

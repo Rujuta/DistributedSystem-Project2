@@ -9,7 +9,7 @@ packet* create_packet(packet_type , payload_def *, int  , int);
 int process_ip(packet *, int *, my_variables*);
 
 void debug_log(char *);
-void process_green(int *, my_variables *, int );
+void process_green(int *, my_variables *, int ,int *);
 
 void send_green(my_variables* ,int *);
 
@@ -19,7 +19,15 @@ int recvd_by_all(my_variables *local_var);
 
 void write_to_file(my_variables *local_var);
 
-void process_token(my_variables *local_var);
+void process_token(my_variables *local_var,int *ip_table);
+
+void send_packets(my_variables *local_var);
+
+void update_token(my_variables *local_var);
+
+void check_eof(my_variables *local_var);
+
+void process_data(my_variables *local_var, packet *mess_buf);
 
 int main(int argc, char* argv[])
 {
@@ -164,12 +172,14 @@ int main(int argc, char* argv[])
 	local_var.unicast_addr=&unicast_addr;
 	local_var.my_state=INIT;
 	local_var.tok=NULL;
-	local_var.prev_tok=NULL;
 	local_var.my_timeout=&timeout;
 	local_var.buffer=buffer;
 	local_var.local_aru=-1;
 	local_var.my_file=write;
+	local_var.eof_flag=0;
 
+	/*Initializing random*/
+	srand(time(NULL));
 	int ip_table[local_var.no_of_machines]; // this is number of machines
 	int green_table[local_var.no_of_machines];
 	for(i=0;i<local_var.no_of_machines;i++){
@@ -205,6 +215,7 @@ int main(int argc, char* argv[])
 				if(debug){
 					printf("\nReceived something");
 				}
+				/*If message is from self*/
 				if(mess_buf->machine_id==local_var.machine_id)
 					continue;
 
@@ -234,12 +245,12 @@ int main(int argc, char* argv[])
 									}
 									break;
 							case INIT_GREEN:
-									process_green(green_table,&local_var,mess_buf->machine_id);
+									process_green(green_table,&local_var,mess_buf->machine_id,ip_table);
 									break;
 							case DATA:
 									local_var.my_state=NO_TOKEN;
 									local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
-									//process_data();
+									process_data(&local_var,mess_buf);
 									break;
 
 
@@ -251,6 +262,32 @@ int main(int argc, char* argv[])
 					case HAD_TOKEN:
 						break;
 					case NO_TOKEN:
+						switch(mess_buf->type){
+
+							case TOKEN:/*I need to go into HAS TOKEN if this is true*/ 
+								if((mess_buf->token_id)+1 > local_var.prev_token_id){
+									local_var.my_state=HAS_TOKEN;
+									local_var.my_timeout->tv_usec=HAS_TOKEN_TIMEOUT;
+									process_token(&local_var,ip_table);
+									}
+
+								break;
+							case DATA:
+								
+								if(mess_buf->payload.data.sequence_num>local_var.local_aru){
+								
+									process_data(&local_var,mess_buf);
+								
+								}
+								//process_data();
+								break;
+							case QUIT:
+								break;
+
+
+
+						}
+
 						break;
 
 
@@ -263,7 +300,7 @@ int main(int argc, char* argv[])
 				case INIT:
 					if(green_flag){
 						if(local_var.machine_id==0){
-							process_green(green_table,&local_var,local_var.machine_id);							
+							process_green(green_table,&local_var,local_var.machine_id,ip_table);							
 						}
 						else{
 
@@ -327,6 +364,7 @@ packet* create_packet(packet_type new_type, payload_def *content, int machine_id
 
 int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 
+	debug_log("Entering Process_ip");
 	int i,machine_id=mess_buf->machine_id;
 	ip_table[machine_id]=mess_buf->payload.ip_address;
 	/*Check for green*/
@@ -339,20 +377,24 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 
 		send_green(local_var,ip_table);	
 	}
+
+	debug_log("Exiting Process_ip");
 	return 1;
 
 }
 
 void send_green(my_variables* local_var,int *ip_table){
 
+	debug_log("Entering send_green");
 	payload_def content;
 	content.ip_address=-1;
 	packet* new_packet=create_packet(INIT_GREEN,&content,local_var->machine_id, -1);
 	unicast(new_packet, local_var, ip_table[0]);
 
 }
-void process_green(int *green_table, my_variables *local_var, int green_id){
+void process_green(int *green_table, my_variables *local_var, int green_id,int *ip_table){
 
+	debug_log("Entering Process_green");
 	int i;
 	green_table[green_id]=1;
 	for(i=0;i<local_var->no_of_machines;i++){
@@ -372,6 +414,7 @@ void process_green(int *green_table, my_variables *local_var, int green_id){
 
 	local_var->my_state=HAS_TOKEN;
 	(local_var->my_timeout)->tv_usec=HAS_TOKEN_TIMEOUT;
+	process_token(local_var,ip_table);
 	exit(0);
 }
 void debug_log(char *statement){
@@ -380,33 +423,79 @@ void debug_log(char *statement){
 		printf("\n %s\n",statement);
 	}
 }
-void process_token(my_variables *local_var){
+void process_token(my_variables *local_var,int *ip_table){
+
+
+	debug_log("Entering Process_token");
+	check_eof(local_var);	
 	handle_retransmission(local_var);
 	write_to_file(local_var);
+	send_packets(local_var);
+	update_token(local_var);
+	payload_def *tkn;
+	tkn=(payload_def*)local_var->tok;
+	packet *t = create_packet(TOKEN,tkn,local_var->machine_id,(local_var->tok->token_id)-1);
+	unicast(t,local_var,ip_table[((local_var->machine_id)+1)%local_var->no_of_machines]);
+	local_var->my_state=HAD_TOKEN;
+	(local_var->my_timeout)->tv_usec=HAD_TOKEN_TIMEOUT;
 }
 
 void write_to_file(my_variables *local_var){
+
+	debug_log("Entering write to file");
 	int seq_recvd=recvd_by_all(local_var);
 	int i;
 	for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
 		int index=i%WINDOW;
 		packet *my_packet=local_var->buffer[index];
 		fprintf(local_var->my_file,"%2d, %8d, %8d\n",my_packet->machine_id, my_packet->payload.data.sequence_num,my_packet->payload.data.random_num);
+		free(local_var->buffer[index]);
+		local_var->buffer[index]=NULL;
 	}
+	local_var->prev_write_seq=seq_recvd+1;
+
+}
+
+void send_packets(my_variables *local_var){
+
+
+	debug_log("Entering send_packets");
+	int seq_recvd=recvd_by_all(local_var);
+	int i;
+	int no_of_packets= WINDOW-(local_var->tok->seq-seq_recvd);
+	int count=no_of_packets>INDV_WINDOW?INDV_WINDOW:no_of_packets;
+	count=count>(local_var->total_packets - local_var->packets_sent)?((local_var->total_packets - local_var->packets_sent)):count;
+	local_var->current_packets_sent=count;	
+	payload_def content;
+	for(i=0;i<count;i++){
+		content.data.random_num=rand()%RANDOM+1;
+		content.data.sequence_num=local_var->tok->seq+1+i;
+		packet* data_packet=create_packet(DATA,&content,local_var->machine_id,local_var->tok->token_id);
+		int index=content.data.sequence_num%WINDOW;
+		local_var->buffer[index]=data_packet;
+		multicast(data_packet,local_var);
+	}
+	local_var->packets_sent+=count;
+
 
 }
 
 /*This is received by all*/
 int recvd_by_all(my_variables *local_var){
 
+
+	debug_log("Entering recvd_by_all");
 	int min=local_var->tok->aru;;
-	if(local_var->prev_tok->aru < min)
-		min=local_var->prev_tok->aru;
+	if(local_var->prev_token_aru < min)
+		min=local_var->prev_token_aru;
 
 	return min;
 }
 
 void handle_retransmission(my_variables *local_var){
+
+
+	debug_log("Entering handle_retransmission");
 	int my_rtr[RTR_SIZE];
 	int i,k=0;
 
@@ -417,10 +506,10 @@ void handle_retransmission(my_variables *local_var){
 		}		
 	}
 	for(i=local_var->local_aru;i<=local_var->tok->seq;i++){
-	
+
 		int index= i%WINDOW;
 		if(local_var->buffer[index]==NULL){
-		
+
 			my_rtr[k++]=i;
 			if(k>=RTR_SIZE){
 				break;
@@ -428,11 +517,81 @@ void handle_retransmission(my_variables *local_var){
 		}
 	}
 	for(i=0;i<k;i++){
-	
+
 		local_var->tok->retransmission_list[i]=my_rtr[i];
 	}
 	for(k=i;k<RTR_SIZE;k++){
-				
+
 		local_var->tok->retransmission_list[i]=-1;
 	}
+}
+
+void update_token(my_variables *local_var){
+
+
+	debug_log("Entering update_token");
+	local_var->prev_token_id=local_var->tok->token_id;
+	local_var->prev_token_aru=local_var->tok->aru;
+	local_var->prev_token_seq=local_var->tok->seq;
+
+	local_var->tok->token_id++;
+	local_var->tok->seq+=local_var->current_packets_sent;
+	if(local_var->local_aru<(local_var->tok->aru)){
+		local_var->tok->aru=local_var->local_aru;
+		local_var->tok->aru_id=local_var->machine_id;
+	}
+	else{
+		if(local_var->tok->aru_id==local_var->machine_id){
+
+			local_var->tok->aru=local_var->local_aru;
+			local_var->tok->aru_id=local_var->machine_id;
+		}
+	}
+}
+
+void check_eof(my_variables *local_var){
+
+
+
+	debug_log("Entering check_eof");
+	if(local_var->tok->aru==local_var->tok->seq &&  local_var->prev_token_seq==local_var->tok->seq ){
+		if(local_var->eof_flag){
+			//start_exit();			
+		}
+		else{
+			local_var->eof_flag=1;
+		}
+
+
+	}
+	else{
+
+		local_var->eof_flag=0;
+	}
+
+}
+
+void start_exit(){
+
+	debug_log("Entering start_exit");
+	exit(0);
+}
+
+/*Functions for receive data*/
+void process_data(my_variables *local_var, packet *mess_buf){
+	
+	debug_log("Entering process_data");
+	int i;
+	int sequence=mess_buf->payload.data.sequence_num;
+	local_var->buffer[sequence%WINDOW]=mess_buf;
+	/*In order packet*/
+	if(local_var->local_aru+1==sequence){
+
+		i=local_var->local_aru+1;
+		while(local_var->buffer[i%WINDOW]!=NULL){
+			local_var->local_aru++;
+			i++;
+		}
+	}
+	debug_log("Exiting process_data");
 }
