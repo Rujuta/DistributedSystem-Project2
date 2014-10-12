@@ -210,6 +210,8 @@ int main(int argc, char* argv[])
 	local_var.my_timeout->tv_usec=INIT_TIMEOUT;
 	/*send init_msg with IP*/
 	multicast(init_packet,&local_var);
+
+	payload_def *tkn;
 	if(debug){
 		printf("\nINIT sent");
 	}
@@ -259,6 +261,16 @@ int main(int argc, char* argv[])
 									local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
 									process_data(&local_var,mess_buf);
 									break;
+							case TOKEN:/*I need to go into HAS TOKEN if this is true*/ 
+									if((mess_buf->token_id)+1 > local_var.prev_token_id){
+										local_var.my_state=HAS_TOKEN;
+										local_var.my_timeout->tv_usec=HAS_TOKEN_TIMEOUT;
+										local_var.tok=&(mess_buf->payload.token);
+										process_token(&local_var,ip_table);
+									}
+
+									break;
+
 
 
 						}
@@ -279,13 +291,15 @@ int main(int argc, char* argv[])
 
 								break;
 							case DATA:
-								debug_log("I am in HADTOKEN, processing data");
-								local_var.my_state=NO_TOKEN;
-								local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
-								if(mess_buf->payload.data.sequence_num>local_var.local_aru){
+								if((mess_buf->token_id) > local_var.prev_token_id){
+									debug_log("I am in HADTOKEN, processing data");
+									local_var.my_state=NO_TOKEN;
+									local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
+									if(mess_buf->payload.data.sequence_num>local_var.local_aru){
 
-									process_data(&local_var,mess_buf);
+										process_data(&local_var,mess_buf);
 
+									}
 								}
 								break;
 							case QUIT:
@@ -360,6 +374,14 @@ int main(int argc, char* argv[])
 						}
 					}
 					break;
+				case HAD_TOKEN:
+
+					//		payload_def *tkn;
+					tkn=(payload_def*)local_var.tok;
+					packet *t = create_packet(TOKEN,tkn,local_var.machine_id,(local_var.tok->token_id)-1);
+					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
+					break;	
+
 
 
 			}
@@ -465,7 +487,7 @@ void process_token(my_variables *local_var,int *ip_table){
 
 	debug_log("Entering Process_token");
 	if(local_var->total_packets == local_var->packets_sent){
-	check_eof(local_var);	
+		check_eof(local_var);	
 
 	}
 	handle_retransmission(local_var);
@@ -557,11 +579,28 @@ void handle_retransmission(my_variables *local_var){
 
 	for(i=0;local_var->tok->retransmission_list[i]!=-1;i++){
 		int index= (local_var->tok->retransmission_list[i])%WINDOW;
+
+		if(debug){
+			printf("retransmiting %d.. \t",index);
+
+		}
+
 		if(local_var->buffer[index]!=NULL){
+
+			local_var->buffer[index]->token_id = local_var->tok->token_id;
 			multicast(local_var->buffer[index],local_var);
-		}		
+
+			if(debug){
+				printf("retransmiting %d.. \t",index);
+
+			}
+
+		}	
+
+
+
 	}
-	for(i=local_var->local_aru;i<=local_var->tok->seq;i++){
+	for(i=local_var->local_aru+1;i<=local_var->tok->seq;i++){
 
 		int index= i%WINDOW;
 		if(local_var->buffer[index]==NULL){
@@ -575,6 +614,12 @@ void handle_retransmission(my_variables *local_var){
 	for(i=0;i<k;i++){
 
 		local_var->tok->retransmission_list[i]=my_rtr[i];
+
+		if(debug){
+
+			printf("rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
+
+		}
 	}
 	for(k=i;k<RTR_SIZE;k++){
 
@@ -614,21 +659,25 @@ void update_token(my_variables *local_var){
 
 	debug_log("Now token ID is");
 	printf("%d",local_var->tok->token_id);
-	if(local_var->tok->token_id>0){
 
+	if(debug){
 		printf("Current Token sequence: %d",local_var->tok->seq);
 		printf("previous Token sequence: %d",local_var->prev_token_seq);
 		printf("previous Token aru: %d",local_var->prev_token_aru);
 		printf("current Token aru: %d",local_var->tok->aru);
 
 		printf("current local aru: %d",local_var->local_aru);
-		//exit(0);
+
 
 	}
+	//if(local_var->tok->token_id>20){
+
+	//	exit(0);
+
+	//}
 }
 
 void check_eof(my_variables *local_var){
-
 
 
 	debug_log("Entering check_eof");
@@ -684,6 +733,9 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	debug_log("Entering process_data");
 	int i;
 	int sequence=mess_buf->payload.data.sequence_num;
+	if(debug){
+		printf("\nSequence number is %d",sequence);
+	}
 	local_var->buffer[sequence%WINDOW]=mess_buf;
 	/*In order packet*/
 	if(local_var->local_aru+1==sequence){
