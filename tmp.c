@@ -37,7 +37,7 @@ void process_quit(my_variables *local_var, packet *mess_buf);
 void calculate_time(my_variables *local_var);
 
 
-FILE *log1;
+FILE *log1=NULL;
 int main(int argc, char* argv[])
 {
 
@@ -131,6 +131,14 @@ int main(int argc, char* argv[])
 
 	/*Pre-Initialization ends here*/
 	
+	/*file log*/
+	
+	log1=fopen(argv[2],"w");
+	if(log1 == NULL){
+		printf("\nError opening file");
+		exit(1);
+	
+	}
 	/*Wait for start mcast*/
 	for(;;){
 		temp_mask=mask;
@@ -139,11 +147,11 @@ int main(int argc, char* argv[])
 			if ( FD_ISSET( sr, &temp_mask) ) {
 				bytes = recv( sr, mess_buf_start, sizeof(mess_buf_start), 0 );
 				mess_buf_start[bytes] = 0;
-				//	printf(, "received : %s\n", mess_buf );
-				//	printf(,"%d",strcmp(mess_buf,"start"));
-				//	printf("Done");
+				//	fprintf(log1,, "received : %s\n", mess_buf );
+				//	fprintf(log1,,"%d",strcmp(mess_buf,"start"));
+				//	fprintf(log1,"Done");
 				if(strcmp(mess_buf_start,"start")==0){
-					printf("\n Received Start\n");
+					fprintf(log1,"\n Received Start\n");
 					break;
 				}
 			}
@@ -197,13 +205,7 @@ int main(int argc, char* argv[])
 	local_var.total_packets=atoi(argv[1]);
 	local_var.current_packets_sent=0;
 
-	/*file log*/
-	log1=fopen(strcat(argv[2],".log"),"w");
-	if(log1 == NULL){
-		printf("\nError opening file");
-		exit(1);
 	
-	}
 
 	/*Gettime of day variable*/
 	struct timeval report_time;
@@ -236,7 +238,7 @@ int main(int argc, char* argv[])
 
 	payload_def *tkn;
 	if(debug){
-		printf("\nINIT sent");
+		fprintf(log1,"\nINIT sent");
 	}
 	for(;;)
 	{
@@ -261,7 +263,7 @@ int main(int argc, char* argv[])
 
 					case INIT:
 						if(debug){
-							printf("\nInside INIT");
+							fprintf(log1,"\nInside INIT");
 						}
 						switch(mess_buf->type){
 
@@ -406,11 +408,11 @@ int main(int argc, char* argv[])
 					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
 					break;
 				case NO_TOKEN:
-					printf("In NO_TOKEN timeout");
+					fprintf(log1,"In NO_TOKEN timeout");
 					exit(0);
 					break;
 				case HAS_TOKEN:
-					printf("In HAS TOKEN timeout");
+					fprintf(log1,"In HAS TOKEN timeout");
 					exit(0);
 					break;
 
@@ -492,7 +494,7 @@ void process_green(int *green_table, my_variables *local_var, int green_id,int *
 
 		if(green_table[i]==0){
 			if(debug){
-				printf("Not green yet %d", i);
+				fprintf(log1,"Not green yet %d", i);
 			}
 			return ;
 		}
@@ -515,7 +517,7 @@ void process_green(int *green_table, my_variables *local_var, int green_id,int *
 void debug_log(char *statement){
 	//int debug = 1;
 	if(debug){
-		printf("\n %s\n",statement);
+		fprintf(log1,"\n %s\n",statement);
 	}
 }
 void process_token(my_variables *local_var,int *ip_table){
@@ -547,19 +549,19 @@ void write_to_file(my_variables *local_var){
 	int seq_recvd=recvd_by_all(local_var);
 	if(local_var->machine_id>=0){
 
-		//printf("\nsequence recvd: %d previous write seq %d",seq_recvd,local_var->prev_write_seq);
+		//fprintf(log1,"\nsequence recvd: %d previous write seq %d",seq_recvd,local_var->prev_write_seq);
 	}
 	if(!(seq_recvd < 0)){
 		int i;
-		//printf("\nPrevious sequence is :%d",local_var->prev_write_seq);
+		//fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
 		for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
 			int index=i%WINDOW;
 
-			//printf("index is :%d",index);
+			//fprintf(log1,"index is :%d",index);
 			packet *my_packet=local_var->buffer[index];
 			fprintf(local_var->my_file,"%2d, %8d, %8d\n",my_packet->machine_id, my_packet->payload.data.sequence_num,my_packet->payload.data.random_num);
 			//	free(local_var->buffer[index]);
-			//printf("\nMaking contents of %d NULL", index);
+			//fprintf(log1,"\nMaking contents of %d NULL", index);
 			local_var->buffer[index]=NULL;
 		}
 		local_var->prev_write_seq=seq_recvd+1;
@@ -621,7 +623,7 @@ void handle_retransmission(my_variables *local_var){
 		int index= (local_var->tok->retransmission_list[i])%WINDOW;
 
 		if(debug){
-			printf("first retransmiting %d.. \t",local_var->tok->retransmission_list[i]);
+			fprintf(log1,"first retransmiting %d.. \t",local_var->tok->retransmission_list[i]);
 
 		}
 
@@ -631,7 +633,7 @@ void handle_retransmission(my_variables *local_var){
 			multicast(local_var->buffer[index],local_var);
 
 			if(debug){
-				printf("second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
+				fprintf(log1,"second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
 			}
 
@@ -643,7 +645,7 @@ void handle_retransmission(my_variables *local_var){
 
 
 	if(debug){
-		printf("\nlocal aru is %d",local_var->local_aru);
+		fprintf(log1,"\nlocal aru is %d",local_var->local_aru);
 	}
 
 	/*Filling up our retransmission list*/
@@ -668,7 +670,7 @@ void handle_retransmission(my_variables *local_var){
 
 		if(debug){
 
-			//printf("rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
+			//fprintf(log1,"rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
 
 		}
 	}
@@ -685,7 +687,7 @@ void update_token(my_variables *local_var){
 
 
 	debug_log("Entering update_token");
-	//printf("previous Token sequence: %d",local_var->prev_token_seq);
+	//fprintf(log1,"previous Token sequence: %d",local_var->prev_token_seq);
 
 	local_var->prev_token_id=local_var->tok->token_id;
 	//local_var->prev_token_aru=local_var->tok->aru;
@@ -710,15 +712,15 @@ void update_token(my_variables *local_var){
 
 
 	debug_log("Now token ID is");
-	//printf("%d",local_var->tok->token_id);
+	//fprintf(log1,"%d",local_var->tok->token_id);
 
 	if(debug){
-		printf("\nCurrent Token sequence: %d",local_var->tok->seq);
-		printf("\nprevious Token sequence: %d",local_var->prev_token_seq);
-		printf("\nprevious Token aru: %d",local_var->prev_token_aru);
-		printf("\ncurrent Token aru: %d",local_var->tok->aru);
+		fprintf(log1,"\nCurrent Token sequence: %d",local_var->tok->seq);
+		fprintf(log1,"\nprevious Token sequence: %d",local_var->prev_token_seq);
+		fprintf(log1,"\nprevious Token aru: %d",local_var->prev_token_aru);
+		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
 
-		printf("\ncurrent local aru: %d",local_var->local_aru);
+		fprintf(log1,"\ncurrent local aru: %d",local_var->local_aru);
 
 
 	}
@@ -734,7 +736,7 @@ void check_eof(my_variables *local_var){
 
 	debug_log("Entering check_eof");
 
-	//printf("tok aru:  %d ...tok seq %d....prev tok seq %d.... ",local_var->tok->aru,local_var->tok->seq,local_var->prev_token_seq);
+	//fprintf(log1,"tok aru:  %d ...tok seq %d....prev tok seq %d.... ",local_var->tok->aru,local_var->tok->seq,local_var->prev_token_seq);
 
 	if(local_var->tok->aru==local_var->tok->seq &&  local_var->prev_token_seq==local_var->tok->seq ){
 		debug_log("In first if EOF ");
@@ -766,7 +768,7 @@ void check_eof(my_variables *local_var){
 void start_exit(my_variables* local_var){
 
 	int i;
-	printf("\nToken id %d",local_var->tok->token_id);
+	fprintf(log1,"\nToken id %d",local_var->tok->token_id);
 	debug_log("Entering start_exit");
 	payload_def quit_payload;
 	quit_payload.ip_address= 10;
@@ -796,16 +798,16 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	int wflag=0;
 	int sequence=mess_buf->payload.data.sequence_num;
 	if(debug){
-		printf("\nSequence number is %d",sequence);
-		printf("\nARU is %d",local_var->local_aru);
+		fprintf(log1,"\nSequence number is %d",sequence);
+		fprintf(log1,"\nARU is %d",local_var->local_aru);
 	}
 	if(local_var->buffer[sequence%WINDOW]==NULL){
 	local_var->buffer[sequence%WINDOW]=mess_buf;
 	wflag==1;
 	}
 	else{
-		//printf("\n location NOT NULL\n");
-		//printf("\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
+		//fprintf(log1,"\n location NOT NULL\n");
+		//fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
 		//exit(1);
 	}
 	/*In order packet*/
@@ -817,7 +819,7 @@ void process_data(my_variables *local_var, packet *mess_buf){
 		int cnt=0;
 		int null_flag=1;
 		while(local_var->buffer[i%WINDOW]!=NULL){
-			//printf("\nsequence number is LOCATION :: %d local ARU %d ",local_var->buffer[i%WINDOW]->payload.data.sequence_num, local_var->local_aru);
+			//fprintf(log1,"\nsequence number is LOCATION :: %d local ARU %d ",local_var->buffer[i%WINDOW]->payload.data.sequence_num, local_var->local_aru);
 			if(local_var->buffer[i%WINDOW]->payload.data.sequence_num>=local_var->local_aru)
 			{
 				local_var->local_aru++;
@@ -832,7 +834,7 @@ void process_data(my_variables *local_var, packet *mess_buf){
 				break;
 			}*/
 			if(debug){
-				printf("\tlocal aru is %d",local_var->local_aru);
+				fprintf(log1,"\tlocal aru is %d",local_var->local_aru);
 			}
 
 			i++;
@@ -844,7 +846,7 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	}
 
 	if(debug){
-		printf("\nlocal aru is %d",local_var->local_aru);
+		fprintf(log1,"\nlocal aru is %d",local_var->local_aru);
 	}
 
 	debug_log("Exiting process_data");
