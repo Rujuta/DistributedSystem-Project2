@@ -37,6 +37,12 @@ void process_quit(my_variables *local_var, packet *mess_buf);
 void calculate_time(my_variables *local_var);
 
 
+void send_ip_request(my_variables *local_var, int* ip_table);
+
+
+
+
+
 FILE *log1=NULL;
 int main(int argc, char* argv[])
 {
@@ -130,14 +136,14 @@ int main(int argc, char* argv[])
 	FD_SET( (long)0, &mask );    /* stdin */
 
 	/*Pre-Initialization ends here*/
-	
+
 	/*file log*/
-	
+
 	log1=fopen(argv[2],"w");
 	if(log1 == NULL){
 		printf("\nError opening file");
 		exit(1);
-	
+
 	}
 	/*Wait for start mcast*/
 	for(;;){
@@ -205,13 +211,13 @@ int main(int argc, char* argv[])
 	local_var.total_packets=atoi(argv[1]);
 	local_var.current_packets_sent=0;
 
-	
+
 
 	/*Gettime of day variable*/
 	struct timeval report_time;
 	gettimeofday(&report_time,NULL);
 	local_var.start_time=report_time.tv_sec+(report_time.tv_usec/TIMECONV);
-	
+
 
 
 
@@ -234,6 +240,8 @@ int main(int argc, char* argv[])
 	packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
 	local_var.my_timeout->tv_usec=INIT_TIMEOUT;
 	/*send init_msg with IP*/
+	multicast(init_packet,&local_var);
+
 	multicast(init_packet,&local_var);
 
 	payload_def *tkn;
@@ -275,6 +283,12 @@ int main(int argc, char* argv[])
 									break;
 							case INIT_REQ_IP:
 									if(mess_buf->payload.ip_address==local_var.machine_id){ //this is request for my IP
+										/*Creating payload for init packet*/
+										payload_def init_payload;
+										init_payload.ip_address= local_var.my_ip;
+										packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
+
+
 										multicast(init_packet,&local_var);
 									}
 									break;
@@ -371,7 +385,7 @@ int main(int argc, char* argv[])
 			}
 		}
 		else{
-			
+
 			switch(local_var.my_state){
 
 				case INIT:
@@ -386,18 +400,19 @@ int main(int argc, char* argv[])
 					}
 					else{
 
-						int i;
-						for(i=0;i<local_var.no_of_machines;i++){
-							if(ip_table[i]==0){
-								payload_def content;
-								content.ip_address = i;
+						send_ip_request(&local_var,ip_table);
+						/*int i;
+						  for(i=0;i<local_var.no_of_machines;i++){
+						  if(ip_table[i]==0){
+						  payload_def content;
+						  content.ip_address = i;
 
 
-								packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var.machine_id,-1);
+						  packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var.machine_id,-1);
 
-								multicast(new_packet, &local_var);
-							}
-						}
+						  multicast(new_packet, &local_var);
+						  }
+						  }*/
 					}
 					break;
 				case HAD_TOKEN:
@@ -408,11 +423,11 @@ int main(int argc, char* argv[])
 					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
 					break;
 				case NO_TOKEN:
-					fprintf(log1,"In NO_TOKEN timeout");
+					printf("In NO_TOKEN timeout");
 					exit(0);
 					break;
 				case HAS_TOKEN:
-					fprintf(log1,"In HAS TOKEN timeout");
+					printf("In HAS TOKEN timeout");
 					exit(0);
 					break;
 
@@ -457,9 +472,22 @@ packet* create_packet(packet_type new_type, payload_def *content, int machine_id
 
 int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 
-	debug_log("Entering Process_ip");
+	if(debug){
+
+		fprintf(log1,"Entering Process_ip ..%d",mess_buf->machine_id);
+
+	}
 	int i,machine_id=mess_buf->machine_id;
+	if(ip_table[machine_id]==0){
 	ip_table[machine_id]=mess_buf->payload.ip_address;
+	}
+
+	if(debug){
+
+		fprintf(log1,"\n%d",ip_table[machine_id]);
+
+	}
+
 	/*Check for green*/
 	for(i=0;i<local_var->no_of_machines;i++){
 
@@ -489,7 +517,12 @@ void process_green(int *green_table, my_variables *local_var, int green_id,int *
 
 	debug_log("Entering Process_green");
 	int i;
+
 	green_table[green_id]=1;
+	if(green_table[0] != 1){
+		send_ip_request(local_var,ip_table);
+	}
+
 	for(i=0;i<local_var->no_of_machines;i++){
 
 		if(green_table[i]==0){
@@ -802,8 +835,8 @@ void process_data(my_variables *local_var, packet *mess_buf){
 		fprintf(log1,"\nARU is %d",local_var->local_aru);
 	}
 	if(local_var->buffer[sequence%WINDOW]==NULL){
-	local_var->buffer[sequence%WINDOW]=mess_buf;
-	wflag==1;
+		local_var->buffer[sequence%WINDOW]=mess_buf;
+		wflag==1;
 	}
 	else{
 		//fprintf(log1,"\n location NOT NULL\n");
@@ -830,8 +863,8 @@ void process_data(my_variables *local_var, packet *mess_buf){
 			}
 			//cnt++;
 			/*if(cnt==WINDOW){
-				//null_flag=0;
-				break;
+			//null_flag=0;
+			break;
 			}*/
 			if(debug){
 				fprintf(log1,"\tlocal aru is %d",local_var->local_aru);
@@ -839,10 +872,10 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 			i++;
 		}
-	//	if (null_flag==1)
-	//		local_var->local_aru+=cnt;
-	//	else
-			//local_var->local_aru=sequence;
+		//	if (null_flag==1)
+		//		local_var->local_aru+=cnt;
+		//	else
+		//local_var->local_aru=sequence;
 	}
 
 	if(debug){
@@ -868,6 +901,24 @@ void process_quit(my_variables *local_var, packet *mess_buf){
 
 	calculate_time(local_var);
 	exit(0);
+
+
+}
+
+void send_ip_request(my_variables *local_var, int* ip_table){
+
+	int i;
+	for(i=0;i<local_var->no_of_machines;i++){
+		if(ip_table[i]==0){
+			payload_def content;
+			content.ip_address = i;
+
+			fprintf(log1,"\n%d ip not present\n",i);
+			packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var->machine_id,-1);
+
+			multicast(new_packet, local_var);
+		}
+	}
 
 
 }
