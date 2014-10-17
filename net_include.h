@@ -24,13 +24,14 @@
 #define WINDOW 1000
 #define DATA_SIZE 1200
 #define HAD_TOKEN_TIMEOUT 10000
-#define INIT_TIMEOUT 10000
+#define INIT_TIMEOUT 5000
 #define NO_TOKEN_TIMEOUT 1000000
 #define HAS_TOKEN_TIMEOUT 1000000
 #define START_MSG_SIZE 80
 #define RTR_SIZE 296
 #define INDV_WINDOW 50
 #define RANDOM 1000000
+#define TIMECONV 1000000
 typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
 typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;
 
@@ -88,4 +89,5 @@ typedef struct my_variables{
 	int total_packets;
 	int eof_flag;
 	int current_packets_sent;
+	double start_time;
 }my_variables;

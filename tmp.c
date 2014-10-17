@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-#define debug 0
+#define debug 1 
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();
@@ -36,10 +36,13 @@ void process_quit(my_variables *local_var, packet *mess_buf);
 
 void calculate_time(my_variables *local_var);
 
+
+FILE *log1;
 int main(int argc, char* argv[])
 {
 
 	//int debug=1;
+	//
 	/*Pre-Initialization starts here*/
 	/**The sock addrs are initialized here, there is one sockaadr_in for unicast addresses and one for multicast address
 	 * The sending and receiving sockets are created
@@ -136,8 +139,8 @@ int main(int argc, char* argv[])
 			if ( FD_ISSET( sr, &temp_mask) ) {
 				bytes = recv( sr, mess_buf_start, sizeof(mess_buf_start), 0 );
 				mess_buf_start[bytes] = 0;
-				//	printf( "received : %s\n", mess_buf );
-				//	printf("%d",strcmp(mess_buf,"start"));
+				//	printf(, "received : %s\n", mess_buf );
+				//	printf(,"%d",strcmp(mess_buf,"start"));
 				//	printf("Done");
 				if(strcmp(mess_buf_start,"start")==0){
 					printf("\n Received Start\n");
@@ -193,6 +196,14 @@ int main(int argc, char* argv[])
 	local_var.packets_sent=0;
 	local_var.total_packets=atoi(argv[1]);
 	local_var.current_packets_sent=0;
+
+	/*file log*/
+	log1=fopen(strcat(argv[2],".log"),"w");
+	if(log1 == NULL){
+		printf("\nError opening file");
+		exit(1);
+	
+	}
 
 	/*Gettime of day variable*/
 	struct timeval report_time;
@@ -358,6 +369,7 @@ int main(int argc, char* argv[])
 			}
 		}
 		else{
+			
 			switch(local_var.my_state){
 
 				case INIT:
@@ -392,7 +404,15 @@ int main(int argc, char* argv[])
 					tkn=(payload_def*)local_var.tok;
 					packet *t = create_packet(TOKEN,tkn,local_var.machine_id,(local_var.tok->token_id)-1);
 					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
-					break;	
+					break;
+				case NO_TOKEN:
+					printf("In NO_TOKEN timeout");
+					exit(0);
+					break;
+				case HAS_TOKEN:
+					printf("In HAS TOKEN timeout");
+					exit(0);
+					break;
 
 
 
@@ -470,8 +490,12 @@ void process_green(int *green_table, my_variables *local_var, int green_id,int *
 	green_table[green_id]=1;
 	for(i=0;i<local_var->no_of_machines;i++){
 
-		if(green_table[i]==0)
+		if(green_table[i]==0){
+			if(debug){
+				printf("Not green yet %d", i);
+			}
 			return ;
+		}
 	}
 	debug_log("The world is green!!");
 	token_def *init_token=(token_def*)malloc(sizeof(token_def));
@@ -597,7 +621,7 @@ void handle_retransmission(my_variables *local_var){
 		int index= (local_var->tok->retransmission_list[i])%WINDOW;
 
 		if(debug){
-			printf("retransmiting %d.. \t",index);
+			printf("first retransmiting %d.. \t",local_var->tok->retransmission_list[i]);
 
 		}
 
@@ -607,7 +631,7 @@ void handle_retransmission(my_variables *local_var){
 			multicast(local_var->buffer[index],local_var);
 
 			if(debug){
-				printf("retransmiting %d.. \t",index);
+				printf("second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
 			}
 
@@ -622,6 +646,9 @@ void handle_retransmission(my_variables *local_var){
 		printf("\nlocal aru is %d",local_var->local_aru);
 	}
 
+	/*Filling up our retransmission list*/
+	k=0;
+
 	for(i=local_var->local_aru+1;i<=local_var->tok->seq;i++){
 
 		int index= i%WINDOW;
@@ -633,6 +660,8 @@ void handle_retransmission(my_variables *local_var){
 			}
 		}
 	}
+
+	/*Putting my list in token*/
 	for(i=0;i<k;i++){
 
 		local_var->tok->retransmission_list[i]=my_rtr[i];
@@ -643,6 +672,7 @@ void handle_retransmission(my_variables *local_var){
 
 		}
 	}
+	/*Setting rest to -1*/
 	for(k=i;k<RTR_SIZE;k++){
 
 		local_var->tok->retransmission_list[i]=-1;
@@ -788,13 +818,19 @@ void process_data(my_variables *local_var, packet *mess_buf){
 		int null_flag=1;
 		while(local_var->buffer[i%WINDOW]!=NULL){
 			//printf("\nsequence number is LOCATION :: %d local ARU %d ",local_var->buffer[i%WINDOW]->payload.data.sequence_num, local_var->local_aru);
-			if(local_var->buffer[i%WINDOW]->payload.data.sequence_num>=i)
+			if(local_var->buffer[i%WINDOW]->payload.data.sequence_num>=local_var->local_aru)
+			{
 				local_var->local_aru++;
-			cnt++;
-			if(cnt==WINDOW){
-				null_flag=0;
+
+			}
+			else{
 				break;
 			}
+			//cnt++;
+			/*if(cnt==WINDOW){
+				//null_flag=0;
+				break;
+			}*/
 			if(debug){
 				printf("\tlocal aru is %d",local_var->local_aru);
 			}
