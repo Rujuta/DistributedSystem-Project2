@@ -565,9 +565,8 @@ void process_token(my_variables *local_var,int *ip_table){
 	handle_retransmission(local_var);
 
 	//	update_token(local_var);
-//	write_to_file(local_var);
-	send_packets(local_var);
 	write_to_file(local_var);
+	send_packets(local_var);
 	update_token(local_var);
 	//	check_eof(local_var);	
 	payload_def *tkn;
@@ -581,6 +580,8 @@ void process_token(my_variables *local_var,int *ip_table){
 void write_to_file(my_variables *local_var){
 
 	debug_log("Entering write to file");
+
+	fprintf(log1,"\nToken ID :%d",local_var->tok->token_id);
 	int seq_recvd=recvd_by_all(local_var);
 	if(debug){
 
@@ -588,12 +589,13 @@ void write_to_file(my_variables *local_var){
 	}
 	if(!(seq_recvd < 0)){
 		int i;
-		//fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
+		fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
 		for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
 			int index=i%WINDOW;
 
 			//fprintf(log1,"index is :%d",index);
 			packet *my_packet=local_var->buffer[index];
+			fprintf(log1, "Writing %d to file",i);
 			fprintf(local_var->my_file,"%2d, %8d, %8d\n",my_packet->machine_id, my_packet->payload.data.sequence_num,my_packet->payload.data.random_num);
 			//	free(local_var->buffer[index]);
 			//fprintf(log1,"\nMaking contents of %d NULL", index);
@@ -603,7 +605,7 @@ void write_to_file(my_variables *local_var){
 	}
 	if(debug){
 
-		fprintf(log1,"\nprevious write seq %d",seq_recvd,local_var->prev_write_seq);
+		fprintf(log1,"\nprevious write seq %d ;; %d",seq_recvd,local_var->prev_write_seq);
 		fflush(log1);	
 	}
 }
@@ -612,16 +614,23 @@ void send_packets(my_variables *local_var){
 
 
 	debug_log("Entering send_packets");
-	int seq_recvd=local_var->prev_write_seq-1;
+	int seq_recvd=recvd_by_all(local_var);
 	int i;
-	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd);
+	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd); /*How much place is remaining in WINDOW*/
+	printf("\nNo of packets: %d" ,no_of_packets);
+	if(no_of_packets==INDV_WINDOW){
+		printf("token seq: %d",local_var->tok->seq);
+		no_of_packets=no_of_packets/local_var->no_of_machines;
+	}
+	/*If space is greater than individual window size I send INDV_WINDOW of packets*/
 	int count=no_of_packets>INDV_WINDOW?INDV_WINDOW:no_of_packets;
 	count=count>(local_var->total_packets - local_var->packets_sent)?((local_var->total_packets - local_var->packets_sent)):count;
+	
 	if(local_var->tok->seq==local_var->local_aru){
 		local_var->local_aru+=count;
 
 	}
-
+	printf("Count :%d",count);
 	local_var->current_packets_sent=count;	
 	payload_def content;
 	for(i=0;i<count;i++){
@@ -651,7 +660,8 @@ int recvd_by_all(my_variables *local_var){
 
 
 	debug_log("Entering recvd_by_all");
-	int min=local_var->tok->aru;;
+	int min=local_var->tok->aru;
+	fprintf(log1,"Previous TOKEN ARU is :%d Current TOKEN aru is :%d",local_var->prev_token_aru,min);
 	if(local_var->prev_token_aru < min)
 		min=local_var->prev_token_aru;
 
@@ -744,9 +754,22 @@ void update_token(my_variables *local_var){
 	debug_log("Entering update_token");
 	//fprintf(log1,"previous Token sequence: %d",local_var->prev_token_seq);
 
+	if(debug){
+		fprintf(log1,"\nBEFORE UPDATE ");
+		fprintf(log1,"\nCurrent Token sequence: %d",local_var->tok->seq);
+		fprintf(log1,"\nprevious Token sequence: THIS is same as CURRENT sequence, I just updated it - i have seen this seq once%d",local_var->prev_token_seq);
+		fprintf(log1,"\nprevious Token aru: %d",local_var->prev_token_aru);
+		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
+
+		fprintf(log1,"\ncurrent local aru: %d",local_var->local_aru);
+		fflush(log1);	
+
+
+	}
+	
 	local_var->prev_token_id=local_var->tok->token_id;
-	//local_var->prev_token_aru=local_var->tok->aru;
-	//local_var->prev_token_seq=local_var->tok->seq;
+	local_var->prev_token_aru=local_var->tok->aru;
+	local_var->prev_token_seq=local_var->tok->seq;
 
 	local_var->tok->token_id++;
 	local_var->tok->seq+=local_var->current_packets_sent;
@@ -762,16 +785,17 @@ void update_token(my_variables *local_var){
 		}
 	}
 
-	local_var->prev_token_aru=local_var->tok->aru;
-	local_var->prev_token_seq=local_var->tok->seq;
+	//local_var->prev_token_aru=local_var->tok->aru;
+	//local_var->prev_token_seq=local_var->tok->seq;
 
 
 	debug_log("Now token ID is");
-	//fprintf(log1,"%d",local_var->tok->token_id);
+	fprintf(log1,"%d",local_var->tok->token_id);
 
 	if(debug){
+		fprintf(log1,"\nAFTER UPDATE");
 		fprintf(log1,"\nCurrent Token sequence: %d",local_var->tok->seq);
-		fprintf(log1,"\nprevious Token sequence: %d",local_var->prev_token_seq);
+		fprintf(log1,"\nprevious Token sequence: THIS is same as CURRENT sequence, I just updated it - i have seen this seq once%d",local_var->prev_token_seq);
 		fprintf(log1,"\nprevious Token aru: %d",local_var->prev_token_aru);
 		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
 
@@ -865,10 +889,11 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	else{
 		fprintf(log1,"\n location NOT NULL\n");
 		fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
-		fflush(log1);
 
+		fflush(log1);	
 		if(local_var->buffer[sequence%WINDOW]->payload.data.sequence_num != sequence){
-		exit(1);
+			printf("MESSED");
+			exit(1);
 		}
 	}
 	/*In order packet*/

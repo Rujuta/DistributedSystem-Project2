@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-#define debug 1 
+#define debug 1
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();
@@ -181,7 +181,7 @@ int main(int argc, char* argv[])
 	my_variables local_var;
 
 	/*This is my buffer of data packets*/
-	packet* buffer[WINDOW]={NULL};
+	packet* buffer[BUF_SIZE]={NULL};
 
 	/*Intializing file*/
 	char file_name[80]={'\0'};
@@ -318,7 +318,6 @@ int main(int argc, char* argv[])
 					case HAS_TOKEN:
 						break;
 					case HAD_TOKEN:	
-
 						switch(mess_buf->type){
 							case TOKEN:/*I need to go into HAS TOKEN if this is true*/ 
 								if((mess_buf->token_id)+1 > local_var.prev_token_id){
@@ -416,11 +415,14 @@ int main(int argc, char* argv[])
 					}
 					break;
 				case HAD_TOKEN:
-
+					
+					//printf("Had token timeout");
 					//		payload_def *tkn;
 					tkn=(payload_def*)local_var.tok;
 					packet *t = create_packet(TOKEN,tkn,local_var.machine_id,(local_var.tok->token_id)-1);
-					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
+					int j;
+					for(j=0;j<5;j++)
+						unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
 					break;
 				case NO_TOKEN:
 					printf("In NO_TOKEN timeout");
@@ -551,7 +553,6 @@ void debug_log(char *statement){
 	//int debug = 1;
 	if(debug){
 		fprintf(log1,"\n %s\n",statement);
-		fflush(log1);	
 	}
 }
 void process_token(my_variables *local_var,int *ip_table){
@@ -565,9 +566,8 @@ void process_token(my_variables *local_var,int *ip_table){
 	handle_retransmission(local_var);
 
 	//	update_token(local_var);
-//	write_to_file(local_var);
-	send_packets(local_var);
 	write_to_file(local_var);
+	send_packets(local_var);
 	update_token(local_var);
 	//	check_eof(local_var);	
 	payload_def *tkn;
@@ -582,15 +582,15 @@ void write_to_file(my_variables *local_var){
 
 	debug_log("Entering write to file");
 	int seq_recvd=recvd_by_all(local_var);
-	if(debug){
+	if(local_var->machine_id>=0){
 
-		fprintf(log1,"\nsequence recvd: %d previous write seq %d",seq_recvd,local_var->prev_write_seq);
+		//fprintf(log1,"\nsequence recvd: %d previous write seq %d",seq_recvd,local_var->prev_write_seq);
 	}
 	if(!(seq_recvd < 0)){
 		int i;
 		//fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
 		for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
-			int index=i%WINDOW;
+			int index=i%BUF_SIZE;
 
 			//fprintf(log1,"index is :%d",index);
 			packet *my_packet=local_var->buffer[index];
@@ -601,20 +601,15 @@ void write_to_file(my_variables *local_var){
 		}
 		local_var->prev_write_seq=seq_recvd+1;
 	}
-	if(debug){
-
-		fprintf(log1,"\nprevious write seq %d",seq_recvd,local_var->prev_write_seq);
-		fflush(log1);	
-	}
 }
 
 void send_packets(my_variables *local_var){
 
 
 	debug_log("Entering send_packets");
-	int seq_recvd=local_var->prev_write_seq-1;
+	int seq_recvd=recvd_by_all(local_var);
 	int i;
-	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd);
+	int no_of_packets= WINDOW-(local_var->tok->seq-seq_recvd);
 	int count=no_of_packets>INDV_WINDOW?INDV_WINDOW:no_of_packets;
 	count=count>(local_var->total_packets - local_var->packets_sent)?((local_var->total_packets - local_var->packets_sent)):count;
 	if(local_var->tok->seq==local_var->local_aru){
@@ -628,17 +623,11 @@ void send_packets(my_variables *local_var){
 		content.data.random_num=rand()%RANDOM+1;
 		content.data.sequence_num=local_var->tok->seq+1+i;
 		packet* data_packet=create_packet(DATA,&content,local_var->machine_id,local_var->tok->token_id);
-		int index=content.data.sequence_num%WINDOW;
+		int index=content.data.sequence_num%BUF_SIZE;
 		local_var->buffer[index]=data_packet;
 		multicast(data_packet,local_var);
 	}
 	local_var->packets_sent+=count;
-	
-	if(debug){
-		fprintf(log1,"\nsent uptill seq num : %d..",local_var->tok->seq+count);
-
-		fflush(log1);	
-	}
 
 	//local_var->tok->seq+=local_var->current_packets_sent;
 
@@ -665,29 +654,22 @@ void handle_retransmission(my_variables *local_var){
 	int my_rtr[RTR_SIZE];
 	int i,k=0;
 
-	/*We're checking what we can retransmit*/
 	for(i=0;local_var->tok->retransmission_list[i]!=-1;i++){
-		int index= (local_var->tok->retransmission_list[i])%WINDOW;
+		int index= (local_var->tok->retransmission_list[i])%BUF_SIZE;
 
 		if(debug){
 			fprintf(log1,"first retransmiting %d.. \t",local_var->tok->retransmission_list[i]);
 
-		fflush(log1);	
 		}
 
 		if(local_var->buffer[index]!=NULL){
 
 			local_var->buffer[index]->token_id = local_var->tok->token_id;
-			if(local_var->buffer[index]->payload.data.sequence_num!=local_var->tok->retransmission_list[i]){
-				printf("Messed up!!");
-				exit(1);
-			}
-			
-				multicast(local_var->buffer[index],local_var);
+			multicast(local_var->buffer[index],local_var);
+
 			if(debug){
 				fprintf(log1,"second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
-		fflush(log1);	
 			}
 
 		}	
@@ -699,7 +681,6 @@ void handle_retransmission(my_variables *local_var){
 
 	if(debug){
 		fprintf(log1,"\nlocal aru is %d",local_var->local_aru);
-		fflush(log1);	
 	}
 
 	/*Filling up our retransmission list*/
@@ -707,7 +688,7 @@ void handle_retransmission(my_variables *local_var){
 
 	for(i=local_var->local_aru+1;i<=local_var->tok->seq;i++){
 
-		int index= i%WINDOW;
+		int index= i%BUF_SIZE;
 		if(local_var->buffer[index]==NULL){
 
 			my_rtr[k++]=i;
@@ -724,8 +705,7 @@ void handle_retransmission(my_variables *local_var){
 
 		if(debug){
 
-			fprintf(log1,"rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
-		fflush(log1);	
+			//fprintf(log1,"rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
 
 		}
 	}
@@ -776,7 +756,6 @@ void update_token(my_variables *local_var){
 		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
 
 		fprintf(log1,"\ncurrent local aru: %d",local_var->local_aru);
-		fflush(log1);	
 
 
 	}
@@ -856,20 +835,15 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	if(debug){
 		fprintf(log1,"\nSequence number is %d",sequence);
 		fprintf(log1,"\nARU is %d",local_var->local_aru);
-		fflush(log1);	
 	}
-	if(local_var->buffer[sequence%WINDOW]==NULL){
-		local_var->buffer[sequence%WINDOW]=mess_buf;
+	if(local_var->buffer[sequence%BUF_SIZE]==NULL){
+		local_var->buffer[sequence%BUF_SIZE]=mess_buf;
 		wflag==1;
 	}
 	else{
-		fprintf(log1,"\n location NOT NULL\n");
-		fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
-		fflush(log1);
-
-		if(local_var->buffer[sequence%WINDOW]->payload.data.sequence_num != sequence){
-		exit(1);
-		}
+		//fprintf(log1,"\n location NOT NULL\n");
+		//fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
+		//exit(1);
 	}
 	/*In order packet*/
 	if(local_var->local_aru+1==sequence){
@@ -879,9 +853,9 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 		int cnt=0;
 		int null_flag=1;
-		while(local_var->buffer[i%WINDOW]!=NULL){
+		while(local_var->buffer[i%BUF_SIZE]!=NULL){
 			//fprintf(log1,"\nsequence number is LOCATION :: %d local ARU %d ",local_var->buffer[i%WINDOW]->payload.data.sequence_num, local_var->local_aru);
-			if(local_var->buffer[i%WINDOW]->payload.data.sequence_num>=local_var->local_aru)
+			if(local_var->buffer[i%BUF_SIZE]->payload.data.sequence_num>=local_var->local_aru)
 			{
 				local_var->local_aru++;
 
@@ -896,7 +870,6 @@ void process_data(my_variables *local_var, packet *mess_buf){
 			}*/
 			if(debug){
 				fprintf(log1,"\tlocal aru is %d",local_var->local_aru);
-		fflush(log1);	
 			}
 
 			i++;
@@ -909,7 +882,6 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 	if(debug){
 		fprintf(log1,"\nlocal aru is %d",local_var->local_aru);
-		fflush(log1);	
 	}
 
 	debug_log("Exiting process_data");
@@ -944,7 +916,6 @@ void send_ip_request(my_variables *local_var, int* ip_table){
 			content.ip_address = i;
 
 			fprintf(log1,"\n%d ip not present\n",i);
-		fflush(log1);	
 			packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var->machine_id,-1);
 
 			multicast(new_packet, local_var);

@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-#define debug 1 
+#define debug 1
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();
@@ -41,14 +41,12 @@ void send_ip_request(my_variables *local_var, int* ip_table);
 
 
 
-
+/*Logs written to this file*/
 
 FILE *log1=NULL;
 int main(int argc, char* argv[])
 {
 
-	//int debug=1;
-	//
 	/*Pre-Initialization starts here*/
 	/**The sock addrs are initialized here, there is one sockaadr_in for unicast addresses and one for multicast address
 	 * The sending and receiving sockets are created
@@ -138,7 +136,6 @@ int main(int argc, char* argv[])
 	/*Pre-Initialization ends here*/
 
 	/*file log*/
-
 	log1=fopen(argv[2],"w");
 	if(log1 == NULL){
 		printf("\nError opening file");
@@ -153,9 +150,6 @@ int main(int argc, char* argv[])
 			if ( FD_ISSET( sr, &temp_mask) ) {
 				bytes = recv( sr, mess_buf_start, sizeof(mess_buf_start), 0 );
 				mess_buf_start[bytes] = 0;
-				//	fprintf(log1,, "received : %s\n", mess_buf );
-				//	fprintf(log1,,"%d",strcmp(mess_buf,"start"));
-				//	fprintf(log1,"Done");
 				if(strcmp(mess_buf_start,"start")==0){
 					fprintf(log1,"\n Received Start\n");
 					break;
@@ -171,17 +165,15 @@ int main(int argc, char* argv[])
 	struct timeval timeout;
 	timeout.tv_sec=0;
 
+	/*Green flag is set when process receives IP from all other machines*/
 	int green_flag=0,i;
-	//int recv_machine_id;
-	//int recv_token_id;
-	//int recv_type;
-	//payload_def recv_payload;
 
 	/*Initializing local structure*/
 	my_variables local_var;
 
-	/*This is my buffer of data packets*/
-	packet* buffer[WINDOW]={NULL};
+	/*This is my buffer of data packets BUF_SIZE=2*WINDOW WINDOW is the maximum number of unacknowledged packets that can exist
+	 * In the worse case scenario, 2*WINDOW number of unacked packets can exist - hence when there are unacked packets ,we need place to store them in case they have not been delivered*/
+	packet* buffer[BUF_SIZE]={NULL};
 
 	/*Intializing file*/
 	char file_name[80]={'\0'};
@@ -197,6 +189,7 @@ int main(int argc, char* argv[])
 	local_var.multicast_addr=&multicast_addr;
 	local_var.unicast_addr=&unicast_addr;
 	local_var.my_state=INIT;
+	/*This is pointer to the token I receive*/
 	local_var.tok=NULL;
 	local_var.my_timeout=&timeout;
 	local_var.buffer=buffer;
@@ -225,6 +218,8 @@ int main(int argc, char* argv[])
 	srand(time(NULL));
 	int ip_table[local_var.no_of_machines]; // this is number of machines
 	int green_table[local_var.no_of_machines];
+
+	/*Set IP table and Green table to 0 initially*/
 	for(i=0;i<local_var.no_of_machines;i++){
 		ip_table[i]=0;
 		green_table[i]=0;
@@ -233,6 +228,7 @@ int main(int argc, char* argv[])
 
 	recv_dbg_init(atoi(argv[4]),atoi(argv[2]));
 
+	/*Init process starts here*/
 
 	/*Creating payload for init packet*/
 	payload_def init_payload;
@@ -260,7 +256,7 @@ int main(int argc, char* argv[])
 				mess_buf=(packet*)malloc(sizeof(packet));
 				bytes=recv_dbg(sr,(char*)mess_buf,sizeof(packet),0);
 
-				/*If message is from self*/
+				/*If message is from self ignore it*/
 				if(mess_buf->machine_id==local_var.machine_id)
 					continue;
 
@@ -275,40 +271,44 @@ int main(int argc, char* argv[])
 						}
 						switch(mess_buf->type){
 
-							case INIT_MSG:  if(!green_flag){
-										debug_log("Inside green flag check");
-										green_flag=process_ip(mess_buf,ip_table,&local_var);
-										green_table[local_var.machine_id]=green_flag;
-									}
-									break;
+							case INIT_MSG:  /*On receiving an INIT message, go into processing the IP - insert it into ip_table*/
+								if(!green_flag){
+									debug_log("Inside green flag check");
+									green_flag=process_ip(mess_buf,ip_table,&local_var);
+									green_table[local_var.machine_id]=green_flag;
+								}
+								break;
 							case INIT_REQ_IP:
-									if(mess_buf->payload.ip_address==local_var.machine_id){ //this is request for my IP
-										/*Creating payload for init packet*/
-										payload_def init_payload;
-										init_payload.ip_address= local_var.my_ip;
-										packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
-
-
-										multicast(init_packet,&local_var);
-									}
-									break;
+								/*Message is requesting an IP address*/
+								if(mess_buf->payload.ip_address==local_var.machine_id){ //this is request for my IP
+									/*Creating payload for init packet*/
+									payload_def init_payload;
+									init_payload.ip_address= local_var.my_ip;
+									packet* init_packet=create_packet(INIT_MSG,&init_payload,local_var.machine_id,token_id);
+									multicast(init_packet,&local_var);
+								}
+								break;
 							case INIT_GREEN:
-									process_green(green_table,&local_var,mess_buf->machine_id,ip_table);
-									break;
+								/*This message will only be received by process 0 - some other process is sending it the green signal*/
+								process_green(green_table,&local_var,mess_buf->machine_id,ip_table);
+								break;
 							case DATA:
-									local_var.my_state=NO_TOKEN;
-									local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
-									process_data(&local_var,mess_buf);
-									break;
-							case TOKEN:/*I need to go into HAS TOKEN if this is true*/ 
-									if((mess_buf->token_id)+1 > local_var.prev_token_id){
-										local_var.my_state=HAS_TOKEN;
-										local_var.my_timeout->tv_usec=HAS_TOKEN_TIMEOUT;
-										local_var.tok=&(mess_buf->payload.token);
-										process_token(&local_var,ip_table);
-									}
+								/*Only a process other than process 0 will receive this message in INIT state. It indicates, process 0 
+								 * has started sending messages. This process goes into NO_TOKEN state after this*/
+								local_var.my_state=NO_TOKEN;
+								local_var.my_timeout->tv_usec=NO_TOKEN_TIMEOUT;
+								process_data(&local_var,mess_buf);
+								break;
+							case TOKEN:	
+								/*I need to go into HAS TOKEN if this is true*/ 
+								if((mess_buf->token_id)+1 > local_var.prev_token_id){
+									local_var.my_state=HAS_TOKEN;
+									local_var.my_timeout->tv_usec=HAS_TOKEN_TIMEOUT;
+									local_var.tok=&(mess_buf->payload.token);
+									process_token(&local_var,ip_table);
+								}
 
-									break;
+								break;
 
 
 
@@ -317,7 +317,7 @@ int main(int argc, char* argv[])
 						break;
 					case HAS_TOKEN:
 						break;
-					case HAD_TOKEN:	
+					case HAD_TOKEN:	/*When a process JUST had the token and sent it, it enters this state*/
 
 						switch(mess_buf->type){
 							case TOKEN:/*I need to go into HAS TOKEN if this is true*/ 
@@ -330,6 +330,9 @@ int main(int argc, char* argv[])
 
 								break;
 							case DATA:
+								/*On getting data packet, processes data and goes into NO_TOKEN state because it is sure
+								 * some other process has received token and it is not responsible for retransmission
+								 * anymore in case of token loss and subsequent TIMEOUT*/
 								if((mess_buf->token_id) > local_var.prev_token_id){
 									debug_log("I am in HADTOKEN, processing data");
 									local_var.my_state=NO_TOKEN;
@@ -342,7 +345,7 @@ int main(int argc, char* argv[])
 								}
 								break;
 							case QUIT:
-
+								/*A packet signalling quit to this process.*/
 								process_quit(&local_var,mess_buf);
 								break;
 
@@ -362,17 +365,16 @@ int main(int argc, char* argv[])
 
 								break;
 							case DATA:
-
+								/*Simply process data, if the sequence number > what I have received so far*/
 								if(mess_buf->payload.data.sequence_num>local_var.local_aru){
 
 									process_data(&local_var,mess_buf);
 
 								}
-								//process_data();
 								break;
-							case QUIT:	process_quit(&local_var,mess_buf);
-
-									break;
+							case QUIT:	/*Begin quit process*/
+								process_quit(&local_var,mess_buf);
+								break;
 
 
 
@@ -384,11 +386,12 @@ int main(int argc, char* argv[])
 				}
 			}
 		}
-		else{
+		else{ /*When a process times out, it again switches on state to execute different actions*/
 
 			switch(local_var.my_state){
 
-				case INIT:
+				case INIT: /*Timeout is on INIT, so maybe 'green signal' needs to be resent to process 0 
+					     or IP address may need to be sent*/
 					if(green_flag){
 						if(local_var.machine_id==0){
 							process_green(green_table,&local_var,local_var.machine_id,ip_table);							
@@ -401,33 +404,25 @@ int main(int argc, char* argv[])
 					else{
 
 						send_ip_request(&local_var,ip_table);
-						/*int i;
-						  for(i=0;i<local_var.no_of_machines;i++){
-						  if(ip_table[i]==0){
-						  payload_def content;
-						  content.ip_address = i;
 
-
-						  packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var.machine_id,-1);
-
-						  multicast(new_packet, &local_var);
-						  }
-						  }*/
 					}
 					break;
 				case HAD_TOKEN:
-
-					//		payload_def *tkn;
+					/*Token is lost, so I need to resend the token*/
 					tkn=(payload_def*)local_var.tok;
 					packet *t = create_packet(TOKEN,tkn,local_var.machine_id,(local_var.tok->token_id)-1);
 					unicast(t,&local_var,ip_table[((local_var.machine_id)+1)%local_var.no_of_machines]);
 					break;
-				case NO_TOKEN:
-					printf("In NO_TOKEN timeout");
+				case NO_TOKEN: /*Almost a minute is over since you didn't receive data, something is wrong*/
+					if (debug) {
+						printf("In NO_TOKEN timeout");
+					}
 					exit(0);
 					break;
 				case HAS_TOKEN:
-					printf("In HAS TOKEN timeout");
+					if(debug){
+						printf("In HAS TOKEN timeout");
+					}
 					exit(0);
 					break;
 
@@ -440,6 +435,7 @@ int main(int argc, char* argv[])
 
 }
 
+/*Function to multicast packets - multicast address set in sockaddr_in multicast*/
 void multicast(packet* send_buff, my_variables *local_var){
 
 
@@ -449,6 +445,7 @@ void multicast(packet* send_buff, my_variables *local_var){
 
 }
 
+/*Function to unicast. used only by a process in HAS_TOKEN state to send token to next process*/
 void unicast(packet *send_buff, my_variables *local_var, int ip_address){
 
 
@@ -458,10 +455,10 @@ void unicast(packet *send_buff, my_variables *local_var, int ip_address){
 
 }
 
+/*Packet of specified type created*/
 packet* create_packet(packet_type new_type, payload_def *content, int machine_id , int token_id){
 
 	packet *new_packet=(packet*)malloc(sizeof(packet));
-	//new_packet->payload=content;
 	memcpy(&(new_packet->payload),content,sizeof(payload_def)); 
 	new_packet->machine_id=machine_id;
 	new_packet->token_id=token_id;
@@ -469,7 +466,7 @@ packet* create_packet(packet_type new_type, payload_def *content, int machine_id
 	return new_packet;
 
 }
-
+/*This function inserts IP of machine in ip_table indexed by its machine id*/
 int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 
 	if(debug){
@@ -479,7 +476,7 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 	}
 	int i,machine_id=mess_buf->machine_id;
 	if(ip_table[machine_id]==0){
-	ip_table[machine_id]=mess_buf->payload.ip_address;
+		ip_table[machine_id]=mess_buf->payload.ip_address;
 	}
 
 	if(debug){
@@ -488,7 +485,7 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 
 	}
 
-	/*Check for green*/
+	/*Check for green -If all IP's exist, send green signal to process 0 and return 1 to set your own green flag*/
 	for(i=0;i<local_var->no_of_machines;i++){
 
 		if(ip_table[i]==0)
@@ -503,7 +500,7 @@ int process_ip(packet *mess_buf, int *ip_table, my_variables *local_var){
 	return 1;
 
 }
-
+/*Send a green to process 0*/
 void send_green(my_variables* local_var,int *ip_table){
 
 	debug_log("Entering send_green");
@@ -513,6 +510,9 @@ void send_green(my_variables* local_var,int *ip_table){
 	unicast(new_packet, local_var, ip_table[0]);
 
 }
+
+/*When a green signal is received by process 0, it sets the flag in green_table indexed by machine id sending 
+ * incoming green flag. If all values in green table are set, it creates a token and starts sending data*/
 void process_green(int *green_table, my_variables *local_var, int green_id,int *ip_table){
 
 	debug_log("Entering Process_green");
@@ -554,22 +554,32 @@ void debug_log(char *statement){
 		fflush(log1);	
 	}
 }
+
+/*On receiving a token, a process executes these actions*/
 void process_token(my_variables *local_var,int *ip_table){
 
 
 	debug_log("Entering Process_token");
+
+	/*Checks if the total number of packets to be sent are sent*/
 	if(local_var->total_packets == local_var->packets_sent){
 		check_eof(local_var);	
 
 	}
+
+	/*Handle retransmissions*/
 	handle_retransmission(local_var);
 
-	//	update_token(local_var);
-//	write_to_file(local_var);
-	send_packets(local_var);
+	/*Deliver packets - make their locations NULL subsequently, safe delivery*/
 	write_to_file(local_var);
+
+	/*Send my share of data packets*/
+	send_packets(local_var);
+
+	/*Update token and related fields*/
 	update_token(local_var);
-	//	check_eof(local_var);	
+
+	/*Unicast the TOKEN*/
 	payload_def *tkn;
 	tkn=(payload_def*)local_var->tok;
 	packet *t = create_packet(TOKEN,tkn,local_var->machine_id,(local_var->tok->token_id)-1);
@@ -577,10 +587,16 @@ void process_token(my_variables *local_var,int *ip_table){
 	local_var->my_state=HAD_TOKEN;
 	(local_var->my_timeout)->tv_usec=HAD_TOKEN_TIMEOUT;
 }
-
+/*Write data to file*/
 void write_to_file(my_variables *local_var){
 
 	debug_log("Entering write to file");
+
+	if (debug)
+		fprintf(log1,"\nToken ID :%d",local_var->tok->token_id);
+
+	/*This value returns the sequence number that every process is guaranteed to have
+	 * min(previous token ARU, current TOKEN aru)*/
 	int seq_recvd=recvd_by_all(local_var);
 	if(debug){
 
@@ -588,59 +604,65 @@ void write_to_file(my_variables *local_var){
 	}
 	if(!(seq_recvd < 0)){
 		int i;
-		//fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
+		if(debug){
+			fprintf(log1,"\nPrevious sequence is :%d",local_var->prev_write_seq);
+		}
+		/*Write to file only uptill what is received by everyone - make those locations NULL*/
 		for(i=local_var->prev_write_seq;i<=seq_recvd;i++){
-			int index=i%WINDOW;
-
-			//fprintf(log1,"index is :%d",index);
+			int index=i%BUF_SIZE;
 			packet *my_packet=local_var->buffer[index];
+			//if(debug)
+			//	fprintf(log1, "Writing %d to file",i);
 			fprintf(local_var->my_file,"%2d, %8d, %8d\n",my_packet->machine_id, my_packet->payload.data.sequence_num,my_packet->payload.data.random_num);
-			//	free(local_var->buffer[index]);
-			//fprintf(log1,"\nMaking contents of %d NULL", index);
 			local_var->buffer[index]=NULL;
 		}
 		local_var->prev_write_seq=seq_recvd+1;
 	}
 	if(debug){
 
-		fprintf(log1,"\nprevious write seq %d",seq_recvd,local_var->prev_write_seq);
+		fprintf(log1,"\nprevious write seq %d ;; %d",seq_recvd,local_var->prev_write_seq);
 		fflush(log1);	
 	}
 }
-
+/*Send packets when process has token*/
 void send_packets(my_variables *local_var){
 
 
 	debug_log("Entering send_packets");
-	int seq_recvd=local_var->prev_write_seq-1;
+	int seq_recvd=recvd_by_all(local_var);
 	int i;
-	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd);
+	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd); /*How much place is remaining in WINDOW*/
+	//if(debug)
+	//printf("\nNo of packets: %d" ,no_of_packets);
+
+
+	/*If space is greater than individual window size I send INDV_WINDOW of packets*/
 	int count=no_of_packets>INDV_WINDOW?INDV_WINDOW:no_of_packets;
 	count=count>(local_var->total_packets - local_var->packets_sent)?((local_var->total_packets - local_var->packets_sent)):count;
+
 	if(local_var->tok->seq==local_var->local_aru){
 		local_var->local_aru+=count;
 
 	}
-
+	//if(debug)
+	//	printf("Count :%d",count);
 	local_var->current_packets_sent=count;	
 	payload_def content;
 	for(i=0;i<count;i++){
 		content.data.random_num=rand()%RANDOM+1;
 		content.data.sequence_num=local_var->tok->seq+1+i;
 		packet* data_packet=create_packet(DATA,&content,local_var->machine_id,local_var->tok->token_id);
-		int index=content.data.sequence_num%WINDOW;
+		int index=content.data.sequence_num%BUF_SIZE;
 		local_var->buffer[index]=data_packet;
 		multicast(data_packet,local_var);
 	}
 	local_var->packets_sent+=count;
-	
+
 	if(debug){
 		fprintf(log1,"\nsent uptill seq num : %d..",local_var->tok->seq+count);
 
 		fflush(log1);	
 	}
-
-	//local_var->tok->seq+=local_var->current_packets_sent;
 
 
 
@@ -651,13 +673,15 @@ int recvd_by_all(my_variables *local_var){
 
 
 	debug_log("Entering recvd_by_all");
-	int min=local_var->tok->aru;;
+	int min=local_var->tok->aru;
+	if(debug)
+		fprintf(log1,"Previous TOKEN ARU is :%d Current TOKEN aru is :%d",local_var->prev_token_aru,min);
 	if(local_var->prev_token_aru < min)
 		min=local_var->prev_token_aru;
-
 	return min;
 }
 
+/*Handle retranmissions from retransmission list in token*/
 void handle_retransmission(my_variables *local_var){
 
 
@@ -667,12 +691,12 @@ void handle_retransmission(my_variables *local_var){
 
 	/*We're checking what we can retransmit*/
 	for(i=0;local_var->tok->retransmission_list[i]!=-1;i++){
-		int index= (local_var->tok->retransmission_list[i])%WINDOW;
+		int index= (local_var->tok->retransmission_list[i])%BUF_SIZE;
 
 		if(debug){
 			fprintf(log1,"first retransmiting %d.. \t",local_var->tok->retransmission_list[i]);
 
-		fflush(log1);	
+			fflush(log1);	
 		}
 
 		if(local_var->buffer[index]!=NULL){
@@ -682,12 +706,12 @@ void handle_retransmission(my_variables *local_var){
 				printf("Messed up!!");
 				exit(1);
 			}
-			
-				multicast(local_var->buffer[index],local_var);
+
+			multicast(local_var->buffer[index],local_var);
 			if(debug){
 				fprintf(log1,"second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
-		fflush(log1);	
+				fflush(log1);	
 			}
 
 		}	
@@ -707,7 +731,7 @@ void handle_retransmission(my_variables *local_var){
 
 	for(i=local_var->local_aru+1;i<=local_var->tok->seq;i++){
 
-		int index= i%WINDOW;
+		int index= i%BUF_SIZE;
 		if(local_var->buffer[index]==NULL){
 
 			my_rtr[k++]=i;
@@ -725,7 +749,7 @@ void handle_retransmission(my_variables *local_var){
 		if(debug){
 
 			fprintf(log1,"rtr list i ...%d ....seq...%d \t", i , my_rtr[i]);
-		fflush(log1);	
+			fflush(log1);	
 
 		}
 	}
@@ -737,16 +761,29 @@ void handle_retransmission(my_variables *local_var){
 
 	debug_log("Exiting h rtr");
 }
-
+/**Update token*/
 void update_token(my_variables *local_var){
 
 
 	debug_log("Entering update_token");
 	//fprintf(log1,"previous Token sequence: %d",local_var->prev_token_seq);
 
+/*	if(debug){
+		fprintf(log1,"\nBEFORE UPDATE ");
+		fprintf(log1,"\nCurrent Token sequence: %d",local_var->tok->seq);
+		fprintf(log1,"\nprevious Token sequence: THIS is same as CURRENT sequence, I just updated it - i have seen this seq once%d",local_var->prev_token_seq);
+		fprintf(log1,"\nprevious Token aru: %d",local_var->prev_token_aru);
+		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
+
+		fprintf(log1,"\ncurrent local aru: %d",local_var->local_aru);
+		fflush(log1);	
+
+
+	} */
+
 	local_var->prev_token_id=local_var->tok->token_id;
-	//local_var->prev_token_aru=local_var->tok->aru;
-	//local_var->prev_token_seq=local_var->tok->seq;
+	local_var->prev_token_aru=local_var->tok->aru;
+	local_var->prev_token_seq=local_var->tok->seq;
 
 	local_var->tok->token_id++;
 	local_var->tok->seq+=local_var->current_packets_sent;
@@ -762,16 +799,16 @@ void update_token(my_variables *local_var){
 		}
 	}
 
-	local_var->prev_token_aru=local_var->tok->aru;
-	local_var->prev_token_seq=local_var->tok->seq;
 
 
 	debug_log("Now token ID is");
-	//fprintf(log1,"%d",local_var->tok->token_id);
+	if(debug)
+		fprintf(log1,"%d",local_var->tok->token_id);
 
 	if(debug){
+		fprintf(log1,"\nAFTER UPDATE");
 		fprintf(log1,"\nCurrent Token sequence: %d",local_var->tok->seq);
-		fprintf(log1,"\nprevious Token sequence: %d",local_var->prev_token_seq);
+		fprintf(log1,"\nprevious Token sequence: THIS is same as CURRENT sequence, I just updated it - i have seen this seq once%d",local_var->prev_token_seq);
 		fprintf(log1,"\nprevious Token aru: %d",local_var->prev_token_aru);
 		fprintf(log1,"\ncurrent Token aru: %d",local_var->tok->aru);
 
@@ -780,19 +817,15 @@ void update_token(my_variables *local_var){
 
 
 	}
-	//if(local_var->tok->token_id>20){
-
-	//	exit(0);
-
-	//}
 }
-
+/*Set flag if EOF process is supposed to begin
+ * When token's ARU is equal to TOKEN's sequence number and the previous token's sequence number is same as current sequence number 
+ * for 2 consecutive rounds, then no one has anything new to send as well as everybody has received everything sent so far*/
 void check_eof(my_variables *local_var){
 
 
 	debug_log("Entering check_eof");
 
-	//fprintf(log1,"tok aru:  %d ...tok seq %d....prev tok seq %d.... ",local_var->tok->aru,local_var->tok->seq,local_var->prev_token_seq);
 
 	if(local_var->tok->aru==local_var->tok->seq &&  local_var->prev_token_seq==local_var->tok->seq ){
 		debug_log("In first if EOF ");
@@ -821,6 +854,9 @@ void check_eof(my_variables *local_var){
 
 }
 
+/*The first process to realize that everyone has received everything starts the exit procedure
+ * Sends the first QUIT packet with a COUNTER set, which indicates to the next process how many quit packets 
+ * it needs to send before quitting*/
 void start_exit(my_variables* local_var){
 
 	int i;
@@ -851,24 +887,25 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 	debug_log("Entering process_data");
 	int i;
-	int wflag=0;
 	int sequence=mess_buf->payload.data.sequence_num;
 	if(debug){
 		fprintf(log1,"\nSequence number is %d",sequence);
 		fprintf(log1,"\nARU is %d",local_var->local_aru);
 		fflush(log1);	
 	}
-	if(local_var->buffer[sequence%WINDOW]==NULL){
-		local_var->buffer[sequence%WINDOW]=mess_buf;
-		wflag==1;
+	if(local_var->buffer[sequence%BUF_SIZE]==NULL){
+		local_var->buffer[sequence%BUF_SIZE]=mess_buf;
 	}
 	else{
-		fprintf(log1,"\n location NOT NULL\n");
-		fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
-		fflush(log1);
+		if(debug){
+			fprintf(log1,"\n location NOT NULL\n");
+			fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%BUF_SIZE]->payload.data.sequence_num);
 
-		if(local_var->buffer[sequence%WINDOW]->payload.data.sequence_num != sequence){
-		exit(1);
+			fflush(log1);
+		}
+		if(local_var->buffer[sequence%BUF_SIZE]->payload.data.sequence_num != sequence){
+			printf("MESSED");
+			exit(1);
 		}
 	}
 	/*In order packet*/
@@ -879,9 +916,8 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 		int cnt=0;
 		int null_flag=1;
-		while(local_var->buffer[i%WINDOW]!=NULL){
-			//fprintf(log1,"\nsequence number is LOCATION :: %d local ARU %d ",local_var->buffer[i%WINDOW]->payload.data.sequence_num, local_var->local_aru);
-			if(local_var->buffer[i%WINDOW]->payload.data.sequence_num>=local_var->local_aru)
+		while(local_var->buffer[i%BUF_SIZE]!=NULL){
+			if(local_var->buffer[i%BUF_SIZE]->payload.data.sequence_num>=local_var->local_aru)
 			{
 				local_var->local_aru++;
 
@@ -889,22 +925,14 @@ void process_data(my_variables *local_var, packet *mess_buf){
 			else{
 				break;
 			}
-			//cnt++;
-			/*if(cnt==WINDOW){
-			//null_flag=0;
-			break;
-			}*/
 			if(debug){
 				fprintf(log1,"\tlocal aru is %d",local_var->local_aru);
-		fflush(log1);	
+				fflush(log1);	
 			}
 
 			i++;
 		}
-		//	if (null_flag==1)
-		//		local_var->local_aru+=cnt;
-		//	else
-		//local_var->local_aru=sequence;
+
 	}
 
 	if(debug){
@@ -914,7 +942,7 @@ void process_data(my_variables *local_var, packet *mess_buf){
 
 	debug_log("Exiting process_data");
 }
-
+/*Processes that receive QUIT messages execute this before quitting*/
 void process_quit(my_variables *local_var, packet *mess_buf){
 
 	int i;
@@ -934,7 +962,7 @@ void process_quit(my_variables *local_var, packet *mess_buf){
 
 
 }
-
+/*Request for an IP address*/
 void send_ip_request(my_variables *local_var, int* ip_table){
 
 	int i;
@@ -944,7 +972,7 @@ void send_ip_request(my_variables *local_var, int* ip_table){
 			content.ip_address = i;
 
 			fprintf(log1,"\n%d ip not present\n",i);
-		fflush(log1);	
+			fflush(log1);	
 			packet *new_packet=create_packet(INIT_REQ_IP,&content,local_var->machine_id,-1);
 
 			multicast(new_packet, local_var);

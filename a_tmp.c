@@ -565,9 +565,8 @@ void process_token(my_variables *local_var,int *ip_table){
 	handle_retransmission(local_var);
 
 	//	update_token(local_var);
-//	write_to_file(local_var);
-	send_packets(local_var);
 	write_to_file(local_var);
+	send_packets(local_var);
 	update_token(local_var);
 	//	check_eof(local_var);	
 	payload_def *tkn;
@@ -612,7 +611,7 @@ void send_packets(my_variables *local_var){
 
 
 	debug_log("Entering send_packets");
-	int seq_recvd=local_var->prev_write_seq-1;
+	int seq_recvd=recvd_by_all(local_var);
 	int i;
 	int no_of_packets= (WINDOW)-(local_var->tok->seq-seq_recvd);
 	int count=no_of_packets>INDV_WINDOW?INDV_WINDOW:no_of_packets;
@@ -865,11 +864,8 @@ void process_data(my_variables *local_var, packet *mess_buf){
 	else{
 		fprintf(log1,"\n location NOT NULL\n");
 		fprintf(log1,"\n Value at location is : %d",local_var->buffer[sequence%WINDOW]->payload.data.sequence_num);
-		fflush(log1);
-
-		if(local_var->buffer[sequence%WINDOW]->payload.data.sequence_num != sequence){
+		fflush(log1);	
 		exit(1);
-		}
 	}
 	/*In order packet*/
 	if(local_var->local_aru+1==sequence){
