@@ -746,6 +746,7 @@ void handle_retransmission(my_variables *local_var){
 			}
 
 			multicast(local_var->buffer[index],local_var);
+			multicast(local_var->buffer[index],local_var);
 			if(debug){
 				fprintf(log1,"second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
