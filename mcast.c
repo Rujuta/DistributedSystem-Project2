@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-#define debug 1
+#define debug 0
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();
@@ -726,7 +726,7 @@ void handle_retransmission(my_variables *local_var){
 	int i,k=0;
 
 	/*We're checking what we can retransmit*/
-	for(i=0;local_var->tok->retransmission_list[i]!=-1;i++){
+	for(i=0; (local_var->tok->retransmission_list[i]!=-1) || (i>=RTR_SIZE) ;i++){
 		int index= (local_var->tok->retransmission_list[i])%BUF_SIZE;
 
 		if(debug){
