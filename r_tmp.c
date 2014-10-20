@@ -1,6 +1,6 @@
 #include "net_include.h"
 #include "recv_dbg.h"
-#define debug 1
+#define debug 0
 
 void multicast(packet*, my_variables *);
 int get_local_ipaddress();

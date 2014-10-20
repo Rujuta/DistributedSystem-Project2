@@ -22,7 +22,7 @@
 /*Added definitions*/
 #define MCAST_ADDRESS 225 << 24 | 1 << 16 | 2 << 8 | 115
 //#define WINDOW 1000
-#define WINDOW 1500
+#define WINDOW 5000
 #define DATA_SIZE 1200
 //#define HAD_TOKEN_TIMEOUT 10000
 #define HAD_TOKEN_TIMEOUT 1000
@@ -34,11 +34,11 @@
 #define START_MSG_SIZE 80
 #define RTR_SIZE 296
 //#define INDV_WINDOW 50
-#define INDV_WINDOW 50
+#define INDV_WINDOW 150
 #define RANDOM 1000000
 #define TIMECONV 1000000
 #define REDUNDANCY 5
-#define BUF_SIZE 2500
+#define BUF_SIZE 6500
 
 typedef enum {INIT_MSG=0,INIT_REQ_IP, INIT_GREEN,TOKEN, DATA, QUIT } packet_type;
 typedef enum {INIT=0,HAS_TOKEN, HAD_TOKEN,NO_TOKEN } state;

@@ -9,11 +9,12 @@ PROCESS_NAME="./mcast"
 HOME_DIR="/home/rdeshpa3/DistributedSystems/Projects/Project2/DistributedSystem-Project2"
 HOST_LIST="ugrad13 ugrad14 ugrad15 ugrad16 ugrad17 ugrad18 ugrad19 ugrad20 ugrad21 ugrad22 ugrad23 ugrad24"
 
-# No of parameters < 4 display usage
-#if [ "$#" -ne 4 ]
-#then
-#	usage
-#fi
+#No of parameters < 4 display usage
+echo $#
+if [ "$#" -ne 6 ]
+then
+	usage
+fi
 
 while getopts ":p:n:l:h:" OPT; do
 	case "${OPT}" in 

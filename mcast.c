@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
 	}
 
 	/* Declare a variable to store the option */
-	u_char loop;
+	//u_char loop;
 
 	/* 
 	 *  * After you have set up your sending socket, and called setsockopt to set the ttl, 
@@ -120,21 +120,20 @@ int main(int argc, char* argv[])
 	 *    * Set loop to 0 if you would like to ignore your own packets.
 	 *     */
 
-	loop = 0;
+	/*loop = 0;
 	if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop)) < 0)
 	{
 		  printf("Mcast: problem in setsockopt of multicast loop\n");
-	}
-
+	}*/
 
 
 	//ttl_val = 1;
-	/*ttl_val=1;
+	ttl_val=1;
 		if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_TTL, (void *)&ttl_val, 
 				sizeof(ttl_val)) < 0) 
 	{
 		printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in WinNT or Win95\n", ttl_val );
-	}*/
+	} 
 
 	/*Used for multicast*/
 	multicast_addr.sin_family = AF_INET;
@@ -963,7 +962,7 @@ void process_data(my_variables *local_var, packet *mess_buf){
 		}
 		if(local_var->buffer[sequence%BUF_SIZE]->payload.data.sequence_num != sequence){
 			if(debug){
-				printf("dude...fucked..");
+				printf("dude...messed..");
 			}
 			exit(1);
 		}

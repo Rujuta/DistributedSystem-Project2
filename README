@@ -1,1 +1,10 @@
-This is a multicast messaging system. Testing Git
+This repo contains the following files: 
+
+1. mcast.c - Our protocol for multicasting messages
+2. start_mcast.c - The program that signals mcast.c to run 
+3. get_ip.c - This is a small piece of code that returns the machine's IP address. We have used stackoverflow for this code- http://stackoverflow.com/questions/2021549/how-do-i-output-my-host-s-ip-addresses-from-a-c-program
+4. recv_dbg.c recv_dbg.h - The receive routines that were provided to us. They receive with omissions.
+5. net_include.h - header file and definition of our data structures  
+
+** We have modified recv_dbg.c to have an increased timeout as our protocol runs slowly on losses. Although we have set it to 1200 seconds, it almost always is bounded by 500 seconds for 20% loss. 
+
