@@ -111,13 +111,30 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
+	/* Declare a variable to store the option */
+	u_char loop;
+
+	/* 
+	 *  * After you have set up your sending socket, and called setsockopt to set the ttl, 
+	 *   * you can set the loop option. 
+	 *    * Set loop to 0 if you would like to ignore your own packets.
+	 *     */
+
+	loop = 0;
+	if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop)) < 0)
+	{
+		  printf("Mcast: problem in setsockopt of multicast loop\n");
+	}
+
+
+
 	//ttl_val = 1;
-	ttl_val=1;
+	/*ttl_val=1;
 		if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_TTL, (void *)&ttl_val, 
 				sizeof(ttl_val)) < 0) 
 	{
 		printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in WinNT or Win95\n", ttl_val );
-	}
+	}*/
 
 	/*Used for multicast*/
 	multicast_addr.sin_family = AF_INET;
@@ -726,7 +743,7 @@ void handle_retransmission(my_variables *local_var){
 	int i,k=0;
 
 	/*We're checking what we can retransmit*/
-	for(i=0; (local_var->tok->retransmission_list[i]!=-1) || (i>=RTR_SIZE) ;i++){
+	for(i=0; (local_var->tok->retransmission_list[i]!=-1) && (i<RTR_SIZE) ;i++){
 		int index= (local_var->tok->retransmission_list[i])%BUF_SIZE;
 
 		if(debug){
@@ -746,7 +763,7 @@ void handle_retransmission(my_variables *local_var){
 			}
 
 			multicast(local_var->buffer[index],local_var);
-			multicast(local_var->buffer[index],local_var);
+			//multicast(local_var->buffer[index],local_var);
 			if(debug){
 				fprintf(log1,"second retransmiting %d.. \t",local_var->buffer[index]->payload.data.sequence_num);
 
