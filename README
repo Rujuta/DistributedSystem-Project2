@@ -1,3 +1,8 @@
+This is an implementation of the Token Ring protocol for reliable multicast messaging. It runs for a maximum of 10
+machines in a multicast group where each machine transmits approxmately 100,000 messages. The recv_dbg.c is a routine that
+simulates message loss. We handle reliable multicast with message delivery in SAFE order despite omissions. 
+
+
 This repo contains the following files: 
 
 1. mcast.c - Our protocol for multicasting messages
